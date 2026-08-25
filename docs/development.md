@@ -4,6 +4,7 @@
 
 - Python 3.11–3.14
 - SQLite 3 for the legacy data pipeline
+- PostgreSQL 15+ for the V1 application schema
 - Internet access only when intentionally running live supplier validation or scraping
 
 ## Setup
@@ -25,6 +26,13 @@ On Windows, use `.venv\\Scripts\\python.exe` instead of `.venv/bin/python`.
 .venv/bin/python -m ruff check .
 ```
 
+Apply the V1 schema to the database selected by `DATABASE_URL`:
+
+```bash
+export DATABASE_URL=postgresql+psycopg://procurement:procurement@localhost:5432/procurement
+.venv/bin/alembic upgrade head
+```
+
 ## Legacy scraper launch
 
 The original behavior remains available during the migration period:
@@ -42,6 +50,6 @@ documented legacy Windows workflow, but cloud scheduling will replace it for pro
 | Variable | Required | Purpose |
 |---|---|---|
 | `HYPERPURE_OTP` | No | One-time OTP for an explicitly configured Hyperpure account |
+| `DATABASE_URL` | For V1 | SQLAlchemy PostgreSQL connection URL; defaults to the documented local database |
 
 Never commit `.env` files, credentials, OTPs, tokens, cookies, or supplier session data.
-

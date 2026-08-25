@@ -51,6 +51,8 @@ Restaurant ──< Purchase ──< PurchaseItem >── ProductVariant / Suppli
 - Inventory balances are unique per restaurant/location/canonical product/base unit.
 - Cross-tenant access is an application authorization responsibility and must always be derived
   from authenticated membership, never a trusted client restaurant ID.
+- A supplier product has one current `ProductMatch` decision. `REVIEW` and `NO_MATCH` decisions may
+  intentionally have no variant; family-level review may retain only a canonical product.
 
 ## Intentional legacy accommodation
 
@@ -62,4 +64,3 @@ the run ID.
 `SupplierOffer.current_observation_id` is retained as a denormalized pointer without a database
 foreign key to avoid a circular table dependency. Ingestion sets it only after the referenced
 observation has been flushed; integrity is covered by service tests.
-

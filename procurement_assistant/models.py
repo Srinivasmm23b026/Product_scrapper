@@ -219,14 +219,17 @@ class ProductMatch(UUIDPrimaryKeyMixin, Base):
             "review_status IN ('AUTO_MATCH', 'REVIEW', 'NO_MATCH', 'MANUAL_MATCH')",
             name="valid_review_status",
         ),
-        UniqueConstraint("supplier_product_id", "product_variant_id"),
+        UniqueConstraint("supplier_product_id"),
     )
 
     supplier_product_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("supplier_products.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    product_variant_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("product_variants.id", ondelete="CASCADE"), nullable=False, index=True
+    canonical_product_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("canonical_products.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    product_variant_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("product_variants.id", ondelete="CASCADE"), nullable=True, index=True
     )
     match_method: Mapped[str] = mapped_column(String(80), nullable=False)
     confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
@@ -453,4 +456,3 @@ def _prevent_immutable_update(_mapper: object, _connection: object, target: obje
 event.listen(PriceObservation, "before_update", _prevent_immutable_update)
 event.listen(Purchase, "before_update", _prevent_immutable_update)
 event.listen(PurchaseItem, "before_update", _prevent_immutable_update)
-

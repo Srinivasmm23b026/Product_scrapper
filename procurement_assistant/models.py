@@ -240,7 +240,7 @@ class ProductMatch(UUIDPrimaryKeyMixin, Base):
 class SupplierOffer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "supplier_offers"
     __table_args__ = (
-        UniqueConstraint("supplier_product_id", "product_variant_id", "supplier_location_id"),
+        UniqueConstraint("supplier_product_id", "supplier_location_id"),
         CheckConstraint("consecutive_misses >= 0", name="nonnegative_misses"),
         Index("ix_supplier_offers_variant_active", "product_variant_id", "active"),
         Index("ix_supplier_offers_location_seen", "supplier_location_id", "last_seen_at"),
@@ -249,8 +249,8 @@ class SupplierOffer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     supplier_product_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("supplier_products.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    product_variant_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("product_variants.id", ondelete="RESTRICT"), nullable=False
+    product_variant_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("product_variants.id", ondelete="RESTRICT"), nullable=True
     )
     supplier_location_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("supplier_locations.id", ondelete="RESTRICT"), nullable=False

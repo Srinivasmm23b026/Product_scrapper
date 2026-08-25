@@ -37,6 +37,9 @@ export DATABASE_URL=postgresql+psycopg://procurement:procurement@localhost:5432/
 .venv/bin/alembic upgrade head
 ```
 
+For the standard local PostgreSQL container and legacy import procedure, see
+[`docs/migration/sqlite-to-postgres.md`](migration/sqlite-to-postgres.md).
+
 ## Legacy scraper launch
 
 The original behavior remains available during the migration period:

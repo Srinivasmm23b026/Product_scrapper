@@ -43,7 +43,8 @@ Restaurant ──< Purchase ──< PurchaseItem >── ProductVariant / Suppli
 
 - Base units are `kg`, `l`, or `piece` and variant quantities are positive.
 - Supplier products are unique by supplier/external product/external variant.
-- Offers are unique by supplier product/normalized variant/supplier location.
+- Offers are unique by supplier product/supplier location. The normalized variant may be null for
+  legacy or newly observed products whose pack is not yet safely parseable.
 - Observations cannot reference a nonexistent offer and are immutable through the application ORM.
 - Run status is one of `running`, `complete`, `partial`, `failed`, `suspicious_zero`, or
   `interrupted`.

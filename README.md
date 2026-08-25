@@ -1,5 +1,12 @@
 # Product Scraper Pipeline
 
+> **V1 migration status:** This file documents the preserved legacy scraper baseline. The
+> repository is being evolved according to [MASTER_PRD.md](MASTER_PRD.md). Reproducible local
+> setup and checks are documented in [docs/development.md](docs/development.md), and the original
+> database/schema counts are recorded in [docs/baseline/2026-08-26.md](docs/baseline/2026-08-26.md).
+> Sections below remain authoritative only for legacy behavior until superseded by phase-specific
+> architecture and operational documentation.
+
 Automated, zero-cost pipeline that scrapes product details (name, brand, price, MRP, unit, stock, image, URL) from four Indian ecommerce sites and stores them in a local SQLite database, tracking price history over time. No paid APIs, no LLM calls, no proxies — everything runs on plain HTTP requests once a day.
 
 Every price is stamped with the exact location context it was fetched under (section 4), every pack size is parsed into a comparable unit price (section 5), and matching products across sites are linked into canonical groups (section 6) — so cross-site price comparisons are real, not just four disconnected lists sitting next to each other.

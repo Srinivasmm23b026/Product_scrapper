@@ -10,7 +10,7 @@ import json
 import logging
 import re
 import time
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 import requests
 from bs4 import BeautifulSoup

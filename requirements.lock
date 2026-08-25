@@ -1,0 +1,17 @@
+# Generated from the Phase 0 Python 3.14 development environment.
+# Install this file for a fully pinned local/test environment.
+beautifulsoup4==4.15.0
+certifi==2026.7.22
+charset-normalizer==3.5.1
+idna==3.19
+iniconfig==2.3.0
+lxml==6.1.2
+packaging==26.3
+pluggy==1.6.0
+Pygments==2.21.0
+pytest==8.4.2
+requests==2.34.2
+ruff==0.12.12
+soupsieve==2.9.2
+typing_extensions==4.16.0
+urllib3==2.7.0

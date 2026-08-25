@@ -25,6 +25,10 @@ LOCATION = config.LOCATION_CONTEXT["deliverit"]
 LOC_RE = re.compile(r"<loc>([^<]+)</loc>")
 
 
+def _extract_sitemap_urls(xml: str):
+    return LOC_RE.findall(xml)
+
+
 def _discover_product_urls():
     urls = []
     for page in range(1, config.DELIVERIT_MAX_SITEMAP_PAGES + 1):
@@ -32,7 +36,7 @@ def _discover_product_urls():
         try:
             resp = requests.get(sitemap_url, headers=config.HEADERS, timeout=config.REQUEST_TIMEOUT)
             resp.raise_for_status()
-            found = LOC_RE.findall(resp.text)
+            found = _extract_sitemap_urls(resp.text)
         except Exception as exc:
             if not urls:
                 # A request failure (DNS/timeout/5xx) on the very first page
@@ -89,6 +93,16 @@ def _normalize(ld: dict, url: str, out_of_stock: bool) -> dict:
     }
 
 
+def _extract_product_document(html: str, url: str):
+    soup = BeautifulSoup(html, "html.parser")
+    script = soup.find("script", attrs={"type": "application/ld+json"})
+    if not script or not script.string:
+        return None
+    ld = json.loads(script.string)
+    out_of_stock = bool(re.search(r"out of stock", html, re.I))
+    return _normalize(ld, url, out_of_stock)
+
+
 def scrape():
     results = []
     product_urls = _discover_product_urls()
@@ -97,14 +111,11 @@ def scrape():
         try:
             resp = requests.get(url, headers=config.HEADERS, timeout=config.REQUEST_TIMEOUT)
             resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, "html.parser")
-            script = soup.find("script", attrs={"type": "application/ld+json"})
-            if not script or not script.string:
+            product = _extract_product_document(resp.text, url)
+            if product is None:
                 logger.warning("deliverit: no JSON-LD on %s", url)
                 continue
-            ld = json.loads(script.string)
-            out_of_stock = bool(re.search(r"out of stock", resp.text, re.I))
-            results.append(_normalize(ld, url, out_of_stock))
+            results.append(product)
         except Exception as exc:
             logger.warning("deliverit: failed on %s: %s", url, exc)
         time.sleep(config.REQUEST_DELAY_SECONDS)

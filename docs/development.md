@@ -26,6 +26,10 @@ On Windows, use `.venv\\Scripts\\python.exe` instead of `.venv/bin/python`.
 .venv/bin/python -m ruff check .
 ```
 
+The default suite is deterministic and offline. Supplier parser tests use sanitized frozen payloads
+under `tests/fixtures/`; live supplier validation is a separate, intentional operation and is never
+required for the normal test run.
+
 Apply the V1 schema to the database selected by `DATABASE_URL`:
 
 ```bash

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12372a">
+  <title>{{ title }} · Procurement Assistant</title>
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="stylesheet" href="/static/app.css">
+  <script defer src="/static/app.js"></script>
+  {% block scripts %}{% endblock %}
+</head>
+<body data-page="{{ active_page }}">
+  <header class="topbar">
+    <a class="brand" href="/dashboard"><span>PA</span> Procurement Assistant</a>
+    {% if active_page not in ("login", "onboarding") %}
+    <button class="menu-button" type="button" aria-label="Toggle navigation">☰</button>
+    <nav aria-label="Primary navigation">
+      <a class="{% if active_page == 'dashboard' %}active{% endif %}" href="/dashboard">Dashboard</a>
+      <a class="{% if active_page == 'compare' %}active{% endif %}" href="/compare">Compare</a>
+      <a class="{% if active_page == 'inventory' %}active{% endif %}" href="/inventory">Inventory</a>
+      <a class="{% if active_page == 'purchases' %}active{% endif %}" href="/purchases">Purchases</a>
+      <a class="{% if active_page == 'spending' %}active{% endif %}" href="/spending">Spending</a>
+      <button id="logout" class="link-button" type="button">Log out</button>
+    </nav>
+    {% endif %}
+  </header>
+  <main class="page-shell">
+    {% block content %}{% endblock %}
+  </main>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

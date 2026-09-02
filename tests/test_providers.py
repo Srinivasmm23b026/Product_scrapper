@@ -221,6 +221,7 @@ def test_beta_deployment_keeps_server_secrets_out_of_web_configuration() -> None
     assert "bigbasket" not in workflow
     assert "deliverit" not in workflow
     assert "image: postgres:16-alpine" in validation
+    assert "branches: [main]" not in validation
     assert "python -m alembic upgrade head" in validation
     assert "python scripts/audit_repository.py" in validation
     assert "docker build" in validation

@@ -1,4 +1,4 @@
-# AWS beta deployment
+# Future AWS deployment
 
 ## Deployment status and account gate
 
@@ -7,7 +7,8 @@ whether the available account is a normal AWS account with educational/promotion
 AWS Academy/Learner Lab. Do not put restaurant data or a live beta in a training environment whose
 terms prohibit it.
 
-`infra/foundation.yaml` creates the durable foundation. `infra/workload.yaml` is deliberately
+`infrastructure/aws/foundation.yaml` creates the durable foundation.
+`infrastructure/aws/workload.yaml` is deliberately
 separate so the database, snapshots, and Cognito directory can survive workload replacement.
 
 ## Architecture

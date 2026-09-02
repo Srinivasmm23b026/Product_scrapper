@@ -1,25 +1,46 @@
 # Authentication and tenancy
 
-Amazon Cognito is the production identity provider. The application requires
-`COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, and `AWS_REGION` to configure it. Without those
-values auth routes return a service-unavailable response rather than accepting an insecure fallback.
+## Provider boundary
 
-Access/ID JWTs are verified against the user pool's JWKS, expected issuer, application client, token
-use, signature, and expiry. Browser sessions use HTTP-only, SameSite cookies; deployed environments
-must set `COOKIE_SECURE=true` under HTTPS. API clients may use a bearer token.
+The beta uses Supabase Auth. `AUTH_PROVIDER=supabase` selects `SupabaseAuthProvider` and its JWKS
+verifier; `AUTH_PROVIDER=cognito` selects the retained AWS adapter. Both return the same internal
+`AuthTokens` and `AuthPrincipal` types. Procurement services know only the authenticated subject,
+never Supabase or Cognito token structures.
 
-After email verification and login, `/onboarding` uses `/api/restaurants/bootstrap` to create the
-V1 restaurant, membership, and one beta location. `/api/auth/session` reports whether that step is
-complete. Every protected data operation derives restaurant and location
-from that authenticated membership. There is no API parameter that can override this tenant.
+Required beta settings are `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (the legacy
+`SUPABASE_ANON_KEY` alias is accepted). The publishable key is low privilege, but this
+server-rendered application keeps all auth calls on the server. The secret/service-role key is not
+used for authentication and must never reach HTML, JavaScript, API responses, or Render settings.
 
-Supplier-location mappings are administrative data. They must be configured only after a supplier
-store/warehouse/zone mapping is verified; onboarding does not guess a mapping from restaurant
-pincode.
+Supabase access JWTs are verified locally against
+`/auth/v1/.well-known/jwks.json`, including signature, issuer, `authenticated` audience, subject,
+and expiry. Cognito continues to verify issuer, app client, token use, subject, expiry, and signature.
+There is no insecure local fallback; incomplete provider configuration makes auth routes return 503.
 
-The Cognito integration and every auth contract are testable through provider/verifier interfaces.
-Real Cognito acceptance remains blocked until an allowed AWS account is supplied and classified.
+## User flows
 
-Production responses add CSP, clickjacking, MIME-sniffing, referrer, permissions-policy, no-store
-API caching, and HSTS headers. The CloudFormation workload sets secure cookies and forces public
-traffic through HTTPS CloudFront; the ALB only forwards requests carrying its secret origin header.
+The API supports signup, email confirmation, password login, refresh, local-session logout, recovery,
+and password reset through either adapter. For the existing code-entry UI, configure Supabase signup
+and recovery email templates to display `{{ .Token }}` and add the deployed `/login` URL to Auth
+redirect allowlists. If standard magic links are preferred later, add a dedicated callback flow rather
+than parsing unverified fragments in the backend.
+
+Browser sessions use HTTP-only, SameSite=Lax cookies. Hosted environments set `COOKIE_SECURE=true`.
+API clients may use a bearer token. Responses add CSP, clickjacking, MIME-sniffing, referrer,
+permissions-policy, no-store API caching, request IDs, and HSTS under secure-cookie deployments.
+
+## Authorization remains server-side
+
+After verification and login, `/onboarding` creates the application `users` row, restaurant
+membership, and one fixed beta location using the verified provider subject. Every protected data
+operation derives restaurant and location from that membership; client-provided tenant IDs cannot
+override it. Supplier-location mappings remain manually verified administrative data.
+
+Supabase RLS is defense in depth for its Data API, not the authorization authority. The beta backend
+connects through a trusted PostgreSQL owner connection, which bypasses RLS, and therefore every API
+query must continue enforcing the tenant boundary. `infrastructure/supabase/rls.sql` enables RLS and
+revokes application-table access from `anon` and `authenticated`, so browser keys cannot bypass the
+backend. Tenant isolation tests remain mandatory for both providers.
+
+Real Supabase acceptance requires a project and test mailbox; local fake-provider tests prove the
+provider contract but do not claim hosted email delivery or token issuance.

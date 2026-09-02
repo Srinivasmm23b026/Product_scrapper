@@ -4,9 +4,26 @@
 **Target:** V1 restaurant procurement assistant  
 **Primary implementation agent:** Codex  
 **Execution mode:** Autonomous, phase-gated, stop only for genuine external blockers  
-**Current repository state:** Python scraping prototype with SQLite persistence and Windows `.bat` scheduling  
-**Primary cloud target:** AWS using student/promotional credits where permitted  
-**Status:** Ready for implementation planning and execution
+**Current repository state:** Implemented V1 application with PostgreSQL, provider adapters, and legacy compatibility
+**V1 beta cloud target:** Supabase PostgreSQL/Auth/Storage + portable application hosting and scheduler
+**Future cloud target:** AWS using student/promotional credits where permitted
+**Status:** Supabase deployment preparation; hosted validation pending credentials
+
+## 2026-09 Supabase-first amendment
+
+This amendment supersedes AWS-first language elsewhere in this document only where it affects the
+initial V1 beta dependency/order. It does not delete or invalidate the retained AWS architecture.
+
+V1 beta uses Supabase as managed PostgreSQL, Auth, and optional private object storage. The combined
+FastAPI/PWA may run on a suitable container host, and the Python scraper may run from GitHub Actions.
+Core business behavior must use standard PostgreSQL and provider-neutral auth, storage, metrics, and
+worker boundaries. It must not depend on Supabase Data APIs, RPC, generated clients, Edge Functions,
+or RLS as its sole authorization mechanism.
+
+Future AWS deployment replaces infrastructure/providers—Supabase PostgreSQL → RDS, Supabase Auth →
+Cognito, Supabase Storage → S3, GitHub schedule → EventBridge/ECS, structured logs → CloudWatch—
+without rewriting procurement, matching, comparison, purchase, inventory, expense, history, tenancy,
+or scraper-run logic.
 
 ---
 
@@ -16,9 +33,10 @@ Build a procurement assistant for restaurants and local food businesses that hel
 
 The product should begin as a fixed-location beta and evolve later into a location-aware procurement platform that can support different suppliers, cities, pincodes, stores, warehouses, and serviceability zones.
 
-The current repository is only the data-acquisition foundation. It already scrapes product information from suppliers including Hyperpure, BigBasket, Deliverit, and Lots Wholesale, normalizes pack/price data, stores current and historical prices in SQLite, and performs early-stage canonical product matching.
-
-V1 must transform this prototype into a usable restaurant-facing application.
+The repository began as a data-acquisition prototype and now contains the restaurant application,
+PostgreSQL domain model, migration, APIs/PWA, provider adapters, reliable worker, and deployment
+assets. Remaining V1 work is hosted Supabase deployment/validation and real beta feedback; the
+preserved SQLite path is legacy input rather than the application database.
 
 ---
 
@@ -111,7 +129,7 @@ Do not optimize V1 for nationwide coverage.
 8. **Missing products must not be marked unavailable because a scrape failed.**
 9. **V1 should remain deterministic where possible.**
 10. **LLMs must not be required for core product matching in V1.**
-11. **AWS architecture must be cost-conscious.**
+11. **Cloud architecture must be portable and cost-conscious.**
 12. **Codex must prefer finishing V1 over speculative platform engineering.**
 
 ---
@@ -216,7 +234,7 @@ Preserve existing useful behavior and data until migrations are verified.
                   │                         │
                   ▼                         ▼
           Raw Source Snapshot          Normalizer
-                (S3)                       │
+        (provider storage)                 │
                                           ▼
                                   Product Identity Layer
                                           │
@@ -229,7 +247,7 @@ Preserve existing useful behavior and data until migrations are verified.
                                                Price Observations
                                                         │
                                                         ▼
-                                                PostgreSQL / RDS
+                                      Standard PostgreSQL (Supabase/RDS)
                                                         │
                                                         ▼
                                                 Application Backend
@@ -254,7 +272,22 @@ Preserve existing useful behavior and data until migrations are verified.
 
 ---
 
-# 8. Proposed AWS Architecture
+# 8. Cloud Deployment Strategy
+
+## V1 beta: Supabase-first, cloud-portable
+
+- **Supabase PostgreSQL** — accessed through the existing ORM/Alembic database contract
+- **Supabase Auth** — behind the authentication-provider interface
+- **Supabase Storage or local storage** — behind the object-storage interface
+- **GitHub Actions scheduled worker** — invokes the same non-interactive Python worker
+- **Structured logs + persisted scrape runs** — provider-neutral beta visibility
+- **Portable container host** — combined FastAPI/PWA; no Supabase Edge Function requirement
+
+Backend tenant authorization remains mandatory. Supabase RLS may deny direct Data API access or add
+defense in depth, but it is not the only authorization boundary. Service-role credentials are
+server/worker-only and never exposed to browser code.
+
+## Future option: AWS architecture
 
 AWS must only be provisioned when the account type and permissions make it appropriate.
 
@@ -269,7 +302,7 @@ Preferred components:
 - **Lambda** — optional for short/stateless scraper jobs
 - **ECS/Fargate or another small worker runtime** — if scraping runtime exceeds practical Lambda constraints
 
-Avoid unnecessary infrastructure for V1.
+Avoid unnecessary infrastructure. AWS is not a prerequisite for the V1 beta.
 
 ## Mandatory cost controls
 
@@ -703,7 +736,7 @@ Do not require embeddings or a vector database for V1 unless measurable evaluati
 
 # 13. Authentication and Authorization
 
-Preferred provider: Amazon Cognito when AWS deployment is available.
+Preferred V1 beta provider: Supabase Auth. Amazon Cognito remains the future AWS adapter.
 
 V1 flows:
 
@@ -1052,7 +1085,7 @@ Maintain at minimum:
 - database/domain model
 - scraper behavior
 - deployment guide
-- AWS resource map
+- cloud provider map, including retained AWS resources
 - operational runbook
 - testing instructions
 
@@ -1066,7 +1099,7 @@ If an older design is retained for context, mark it explicitly as superseded.
 
 - No secrets in source code.
 - No supplier credentials in frontend bundles.
-- Use environment variables or AWS secret/config services.
+- Use environment variables or the selected cloud provider's secret/config services.
 - Enforce tenant authorization server-side.
 - Validate external input.
 - Use parameterized database access/ORM protections.
@@ -1174,6 +1207,8 @@ Codex may stop only when progress genuinely depends on something unavailable fro
 
 Valid blockers include:
 
+- Supabase project access, credentials, or project configuration
+- Render/GitHub account access, secrets, or hosted-service configuration
 - AWS account access or credentials
 - AWS permissions
 - inability to determine whether the provided AWS environment may host the beta
@@ -1735,41 +1770,34 @@ Yes.
 
 ---
 
-## Phase 8 — AWS Foundation
+## Phase 8 — Supabase Foundation and Cloud-Portability Boundary
 
 ### Goal
 
-Provision minimal AWS foundation suitable for the beta.
-
-### First determine
-
-- normal AWS account with credits, or
-- educational training/lab environment.
-
-If this cannot be verified safely, stop with blocker format.
+Prepare and provision the minimal Supabase foundation suitable for the beta without coupling domain
+logic to Supabase.
 
 ### Preferred resources
 
-- RDS PostgreSQL
-- S3
-- Cognito
-- EventBridge Scheduler
-- CloudWatch
-- Parameter Store or Secrets Manager
-- compute only as needed
+- Supabase PostgreSQL through `DATABASE_URL`
+- Supabase Auth behind `AuthProvider`
+- optional private Supabase Storage behind `ObjectStorage`
+- portable container hosting for the FastAPI/PWA
+- GitHub Actions or another beta-appropriate Python scheduler
+- structured logs and persisted scrape-run diagnostics
 
 ### Add
 
-- AWS Budget
-- billing alerts
-- resource tags
-- cost notes
-- log retention
-- S3 lifecycle policies
+- Supabase configuration and secret inventory
+- standard Alembic deployment workflow
+- provider adapters and selection settings
+- defense-in-depth Data API/RLS controls where useful
+- free-tier storage/connection monitoring notes
+- explicit future AWS migration contract
 
 ### Infrastructure as code
 
-Prefer reproducible infrastructure-as-code if compatible with available AWS permissions and project scope.
+Prefer reproducible configuration/scripts compatible with Supabase, the chosen host, and GitHub.
 
 Do not create unnecessary services.
 
@@ -1778,17 +1806,18 @@ Do not create unnecessary services.
 - environment documented,
 - database reachable securely,
 - secrets not committed,
-- cost controls enabled,
+- service-role secrets remain server-only,
+- ordinary PostgreSQL remains the database contract,
 - resource ownership clear,
 - infrastructure reproducible where feasible.
 
 ### Autonomous?
 
-Yes after credentials/permissions exist.
+Yes for all offline preparation; hosted acceptance requires project credentials.
 
 ### Possible blocker
 
-AWS access/account classification.
+Supabase project URL, keys, database password, and hosting/GitHub configuration.
 
 ---
 
@@ -1800,7 +1829,7 @@ Implement secure user authentication and tenant isolation.
 
 ### Preferred
 
-Amazon Cognito.
+Supabase Auth for V1 beta behind a provider interface; retain Cognito as the AWS adapter.
 
 ### Implement
 
@@ -1826,11 +1855,11 @@ Tenant identity must be derived server-side from authenticated user context.
 
 ### Autonomous?
 
-Yes after AWS auth resources exist.
+Yes after Supabase Auth resources exist.
 
 ### Possible blocker
 
-Cognito/AWS permissions or email-domain configuration if required.
+Supabase project credentials or email-template/redirect configuration.
 
 ---
 
@@ -2106,7 +2135,7 @@ Yes.
 
 ---
 
-## Phase 16 — Cloud Scheduled Scraping
+## Phase 16 — Provider-Neutral Scheduled Scraping
 
 ### Goal
 
@@ -2115,27 +2144,22 @@ Replace Windows Task Scheduler as the production scheduling mechanism.
 ### Architecture
 
 ```text
-EventBridge Scheduler
+Beta scheduler (GitHub Actions)
         ↓
-Scraper runtime
+Portable Python worker
         ↓
-PostgreSQL/RDS
+Standard PostgreSQL (Supabase)
         ↓
-S3 raw snapshots
+ObjectStorage adapter (Supabase/local)
         ↓
-CloudWatch
+Structured logs + persisted run state
 ```
 
 ### Runtime selection
 
-Measure actual scraper runtime and behavior.
-
-Choose:
-
-- Lambda for short/stateless execution,
-- ECS/Fargate or another suitable worker for long-running/browser-heavy execution.
-
-Do not force Lambda without measurement.
+Use GitHub Actions for the initial beta because the existing scraper is Python and can exceed an Edge
+Function's practical fit. Keep the CLI/runtime contract unchanged so AWS later selects Lambda or
+ECS/Fargate based on measured duration without changing scraper business logic.
 
 ### Windows compatibility
 
@@ -2152,11 +2176,11 @@ The old `.bat` flow may remain for local legacy/manual usage, but it must no lon
 
 ### Autonomous?
 
-Yes after AWS runtime access.
+Yes after GitHub/Supabase secrets are configured.
 
 ### Possible blockers
 
-Supplier authentication or AWS permissions.
+Supplier authentication, Supabase credentials, or GitHub repository secret configuration.
 
 ---
 
@@ -2379,7 +2403,8 @@ Spending analytics
 Scheduled scraping
 Run reliability
 Monitoring
-AWS-hosted application/data layer where permitted
+Supabase-hosted V1 beta application/data layer where permitted
+Portable future AWS application/data layer
 ```
 
 ---
@@ -2423,7 +2448,7 @@ When several reasonable solutions exist, choose one based on:
 3. data integrity
 4. maintainability
 5. simplicity
-6. cost-conscious AWS design
+6. cost-conscious, cloud-portable design
 7. testability
 8. existing repository conventions
 9. V1 scope
@@ -2475,6 +2500,7 @@ Never fabricate:
 - matching accuracy,
 - performance results,
 - AWS resources,
+- Supabase resources,
 - deployments,
 - price observations,
 - user feedback.
@@ -2619,9 +2645,19 @@ Spending analytics must use actual paid values.
 
 Do not make unsupported savings claims.
 
-### AWS rules
+### Supabase V1 beta rules
 
-AWS is the preferred cloud platform, using the user's student/promotional credits where legally and technically appropriate.
+Supabase is the initial beta provider for managed PostgreSQL and Auth, with optional private Storage.
+Use `DATABASE_URL`, standard SQLAlchemy/Alembic migrations, provider adapters, backend tenant checks,
+and structured logs. Keep service-role credentials outside the browser and Git. Do not require
+Supabase Data APIs, RPC, Edge Functions, generated clients, or provider-specific domain behavior.
+
+GitHub Actions is the beta scheduler for the existing Python worker. Preserve the worker contract so
+EventBridge plus Lambda/ECS can replace scheduling/runtime later without a business-logic rewrite.
+
+### Future AWS rules
+
+AWS remains a future cloud target, using student/promotional credits where legally and technically appropriate.
 
 Before production-like deployment, determine whether access is:
 
@@ -2704,7 +2740,9 @@ Solve these and continue.
 
 Stop only when further progress genuinely requires something unavailable to you, such as:
 
-- AWS credentials/access,
+- Supabase project URL/keys/database access,
+- hosting or GitHub repository secret configuration,
+- AWS credentials/access for the future AWS target,
 - missing AWS permissions,
 - inability to determine permitted AWS account type,
 - supplier credentials,
@@ -2759,15 +2797,15 @@ Execute:
 5. Product Normalization and Matching V1  
 6. Quantity Comparison / Procurement Engine  
 7. SQLite to PostgreSQL Migration  
-8. AWS Foundation  
-9. Authentication and Restaurant Tenancy  
+8. Supabase Foundation and Cloud-Portability Boundary
+9. Supabase Authentication and Restaurant Tenancy
 10. Application Backend API  
 11. Restaurant-Facing UI  
 12. Purchase Tracking  
 13. Inventory Tracking  
 14. Financial and Spending Analytics  
 15. Price History UI and Analytics  
-16. Cloud Scheduled Scraping  
+16. Provider-Neutral Scheduled Scraping
 17. Monitoring and Operational Visibility  
 18. Beta Hardening  
 19. Restaurant Beta Release and Feedback
@@ -2776,15 +2814,9 @@ Read and use the detailed requirements and acceptance criteria for each phase fr
 
 ### Current objective
 
-Begin at **Phase 0**.
-
-Before editing, inspect the repository again sufficiently to make sure the working tree has not changed since the prior reconnaissance.
-
-Then execute the roadmap autonomously.
-
-Do not stop after Phase 0.
-
-Continue until a genuine external blocker is reached or all executable V1 phases are complete.
+Resume from the implemented core without redoing completed work. Adapt Phase 8/9/16–18 for a
+Supabase-first beta, preserve AWS as a statically validated future target, and continue until hosted
+Supabase credentials/configuration or real restaurant feedback is genuinely required.
 
 ---
 
@@ -2843,6 +2875,9 @@ Scrapers:
 AWS:
 ...
 
+Supabase:
+...
+
 Tests:
 ...
 
@@ -2890,4 +2925,3 @@ Historical Insight
 ```
 
 Every implementation decision should support this flow, data trust, and restaurant usability.
-

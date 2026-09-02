@@ -1,72 +1,54 @@
 # Local development
 
-## Requirements
-
-- Python 3.11–3.14
-- SQLite 3 for the legacy data pipeline
-- PostgreSQL 15+ for the V1 application schema
-- Internet access only when intentionally running live supplier validation or scraping
-
 ## Setup
 
-Create an isolated environment with a supported Python and install the locked dependencies:
+Requirements are Python 3.11–3.14, SQLite for legacy data, and PostgreSQL 15+ for V1.
 
 ```bash
-python3.11 -m venv .venv
-.venv/bin/python -m pip install --upgrade pip
+python3.13 -m venv .venv
 .venv/bin/python -m pip install -r requirements.lock
+cp .env.example .env.local
+docker compose up -d postgres
+DATABASE_URL=postgresql+psycopg://procurement:procurement@localhost:5432/procurement \
+  .venv/bin/alembic upgrade head
 ```
 
-On Windows, use `.venv\\Scripts\\python.exe` instead of `.venv/bin/python`.
+Pydantic deliberately does not auto-load `.env` files; export variables through your shell or a
+secret-aware process manager. `.env.local` is ignored. The Supabase CLI configuration is available
+under `supabase/config.toml`, but local Supabase is optional because the domain requires only normal
+PostgreSQL.
 
-## Checks
+Run the app and checks:
 
 ```bash
-.venv/bin/python -m pytest
-.venv/bin/python -m ruff check .
-.venv/bin/cfn-lint infra/foundation.yaml infra/workload.yaml
+.venv/bin/uvicorn procurement_assistant.app:app --reload
+.venv/bin/ruff check .
+.venv/bin/python -m pytest -q
+.venv/bin/cfn-lint infrastructure/aws/foundation.yaml infrastructure/aws/workload.yaml
+node --check procurement_assistant/static/app.js
+node --check procurement_assistant/static/auth.js
 ```
 
-The default suite is deterministic and offline. Supplier parser tests use sanitized frozen payloads
-under `tests/fixtures/`; live supplier validation is a separate, intentional operation and is never
-required for the normal test run.
+The offline suite uses frozen supplier fixtures. `python main.py` remains the legacy SQLite scraper
+and performs live writes; do not use it as a smoke test. See the migration guide before importing.
 
-Apply the V1 schema to the database selected by `DATABASE_URL`:
+## Main environment boundaries
 
-```bash
-export DATABASE_URL=postgresql+psycopg://procurement:procurement@localhost:5432/procurement
-.venv/bin/alembic upgrade head
-```
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Any PostgreSQL provider; `postgres://` and `postgresql://` normalize to psycopg |
+| `AUTH_PROVIDER` | `supabase` for beta or `cognito` for future AWS |
+| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | Supabase Auth server configuration; legacy `SUPABASE_ANON_KEY` also works |
+| `SUPABASE_SECRET_KEY` | Worker-only Storage credential; legacy `SUPABASE_SERVICE_ROLE_KEY` also works; never browser-exposed |
+| `AUTH_REDIRECT_URL` | Allowed hosted login/recovery destination |
+| `COOKIE_SECURE` | Must be true under hosted HTTPS |
+| `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` | Small persistent-service SQLAlchemy pool |
+| `DB_USE_NULL_POOL` | True for short GitHub jobs using transaction pooling |
+| `OBJECT_STORAGE_PROVIDER` | `local`, `supabase`, or `s3` |
+| `OBJECT_STORAGE_BUCKET`, `LOCAL_STORAGE_PATH` | Snapshot target settings |
+| `METRICS_PROVIDER` | `logs` for beta or `cloudwatch` for AWS |
+| `SUPPLIER`, `SUPPLIER_LOCATION_ID`, `EXPECTED_MIN` | Non-interactive worker contract |
+| `HYPERPURE_OTP` | Explicit account OTP; unsuitable for unattended schedules |
+| `COGNITO_*`, `AWS_REGION`, `RAW_SNAPSHOT_BUCKET`, `CLOUDWATCH_NAMESPACE` | Retained AWS target |
 
-For the standard local PostgreSQL container and legacy import procedure, see
-[`docs/migration/sqlite-to-postgres.md`](migration/sqlite-to-postgres.md).
-
-## Legacy scraper launch
-
-The original behavior remains available during the migration period:
-
-```bash
-.venv/bin/python main.py
-```
-
-This command performs live HTTP requests and mutates `data/products.db` and
-`logs/scraper.log`. Do not use it as a smoke test. `run_scraper.bat` remains for the
-documented legacy Windows workflow, but cloud scheduling will replace it for production.
-
-## Environment variables
-
-| Variable | Required | Purpose |
-|---|---|---|
-| `HYPERPURE_OTP` | No | One-time OTP for an explicitly configured Hyperpure account |
-| `DATABASE_URL` | For V1 | SQLAlchemy PostgreSQL connection URL; defaults to the documented local database |
-| `AWS_REGION` | For Cognito/AWS | AWS region, default `ap-south-1` |
-| `COGNITO_USER_POOL_ID` | For auth | Cognito user-pool identifier |
-| `COGNITO_APP_CLIENT_ID` | For auth | Cognito application client without a client secret |
-| `COOKIE_SECURE` | Deployment | Must be `true` when served over HTTPS |
-| `OFFER_STALE_AFTER_HOURS` | No | UI freshness threshold, default 48 hours |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | AWS tasks | Split database settings injected from Secrets Manager |
-| `RAW_SNAPSHOT_BUCKET` | Cloud worker | S3 bucket for raw scrape snapshots; local runs use `RAW_SNAPSHOT_DIR` |
-| `CLOUDWATCH_NAMESPACE` | Cloud worker | Enables terminal run/count metrics |
-| `SUPPLIER`, `SUPPLIER_LOCATION_ID`, `EXPECTED_MIN` | Cloud worker | Non-interactive scheduled invocation contract |
-
-Never commit `.env` files, credentials, OTPs, tokens, cookies, or supplier session data.
+Never commit database passwords, provider keys, OTPs, JWTs, cookies, or `.env` files.

@@ -1,13 +1,13 @@
 # Application API
 
 The FastAPI application exposes OpenAPI at `/docs` and `/openapi.json`. All domain endpoints require
-a Cognito bearer token or the equivalent secure HTTP-only access-token cookie.
+a verified Supabase/Cognito bearer token or the equivalent secure HTTP-only access-token cookie.
 
 ## Authentication
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/auth/signup` | Create Cognito user and send verification code |
+| POST | `/api/auth/signup` | Create provider user and send verification code |
 | POST | `/api/auth/confirm` | Confirm email verification code |
 | POST | `/api/auth/login` | Authenticate and issue token response/cookies |
 | POST | `/api/auth/forgot-password` | Start password recovery |

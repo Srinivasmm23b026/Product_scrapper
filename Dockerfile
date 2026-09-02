@@ -14,4 +14,4 @@ RUN addgroup --system app && adduser --system --ingroup app app \
 USER app
 
 EXPOSE 8080
-CMD ["uvicorn", "procurement_assistant.app:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips", "*"]
+CMD ["sh", "-c", "exec uvicorn procurement_assistant.app:app --host 0.0.0.0 --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips '*' "]

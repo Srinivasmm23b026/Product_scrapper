@@ -10,9 +10,10 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
+from procurement_assistant.database import build_engine
 from procurement_assistant.models import (
     CanonicalProduct,
     PriceObservation,
@@ -515,7 +516,7 @@ def main() -> None:
     parser.add_argument("--target", required=True, help="SQLAlchemy target database URL")
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
-    report = migrate_legacy_sqlite(args.source, create_engine(args.target, pool_pre_ping=True))
+    report = migrate_legacy_sqlite(args.source, build_engine(args.target))
     rendered = json.dumps(report, indent=2, sort_keys=True)
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)

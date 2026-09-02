@@ -58,8 +58,7 @@ def test_cloud_adapter_persists_catalog_snapshot_and_partial_signal(tmp_path, mo
         }
     ]
     monkeypatch.setitem(cloud_worker.SCRAPERS, "lots", lambda: products)
-    monkeypatch.setenv("RAW_SNAPSHOT_DIR", str(tmp_path))
-    settings = Settings(database_url="sqlite://")
+    settings = Settings(database_url="sqlite://", local_storage_path=tmp_path)
     with factory() as session:
         supplier = session.get(Supplier, supplier_id)
         location = session.get(SupplierLocation, location_id)

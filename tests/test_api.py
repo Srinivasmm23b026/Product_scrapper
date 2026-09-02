@@ -31,6 +31,7 @@ from procurement_assistant.models import (
     SupplierProduct,
     User,
 )
+from procurement_assistant.providers.auth import AuthTokens, SignupResult
 from procurement_assistant.settings import Settings
 
 
@@ -45,7 +46,7 @@ class FakeIdentityProvider:
 
     def signup(self, email, password):
         self.calls.append(("signup", email))
-        return {"UserConfirmed": False, "CodeDeliveryDetails": {"Destination": email}}
+        return SignupResult(False, {"Destination": email})
 
     def confirm_signup(self, email, code):
         self.calls.append(("confirm", email, code))
@@ -53,12 +54,12 @@ class FakeIdentityProvider:
 
     def login(self, email, password):
         self.calls.append(("login", email))
-        return {
-            "AccessToken": email.split("@")[0],
-            "RefreshToken": "refresh",
-            "IdToken": "id-token",
-            "ExpiresIn": 3600,
-        }
+        return AuthTokens(
+            access_token=email.split("@")[0],
+            refresh_token="refresh",
+            id_token="id-token",
+            expires_in=3600,
+        )
 
     def forgot_password(self, email):
         self.calls.append(("forgot", email))
@@ -70,7 +71,7 @@ class FakeIdentityProvider:
 
     def refresh(self, refresh_token):
         self.calls.append(("refresh", refresh_token))
-        return {"AccessToken": "tenant-a", "ExpiresIn": 3600}
+        return AuthTokens(access_token="tenant-a", expires_in=3600)
 
     def logout(self, access_token):
         self.calls.append(("logout", access_token))

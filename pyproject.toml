@@ -34,6 +34,7 @@ infra = ["cfn-lint>=1.55,<2"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
+pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.ruff]

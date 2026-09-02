@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from sqlalchemy import MetaData, create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
@@ -21,15 +22,38 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
+def normalize_database_url(url: str) -> str:
+    if url.startswith("postgres://"):
+        return f"postgresql+psycopg://{url.removeprefix('postgres://')}"
+    if url.startswith("postgresql://"):
+        return f"postgresql+psycopg://{url.removeprefix('postgresql://')}"
+    return url
+
+
 def database_url() -> str:
-    return os.environ.get(
+    return normalize_database_url(os.environ.get(
         "DATABASE_URL",
         "postgresql+psycopg://procurement:procurement@localhost:5432/procurement",
-    )
+    ))
 
 
-def build_engine(url: str | None = None, *, echo: bool = False) -> Engine:
-    return create_engine(url or database_url(), echo=echo, pool_pre_ping=True)
+def build_engine(
+    url: str | None = None,
+    *,
+    echo: bool = False,
+    pool_size: int = 5,
+    max_overflow: int = 2,
+    use_null_pool: bool = False,
+) -> Engine:
+    resolved = normalize_database_url(url or database_url())
+    options = {"echo": echo, "pool_pre_ping": True}
+    if use_null_pool:
+        options["poolclass"] = NullPool
+        if resolved.startswith("postgresql+psycopg://"):
+            options["connect_args"] = {"prepare_threshold": None}
+    elif not resolved.startswith("sqlite"):
+        options.update(pool_size=pool_size, max_overflow=max_overflow)
+    return create_engine(resolved, **options)
 
 
 def build_session_factory(engine: Engine) -> sessionmaker[Session]:

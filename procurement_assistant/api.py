@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -31,6 +30,7 @@ from procurement_assistant.models import (
     SupplierLocation,
     User,
 )
+from procurement_assistant.providers.auth import AuthProviderError, AuthTokens
 from procurement_assistant.schemas import (
     CompareRequest,
     ConfirmationRequest,
@@ -62,28 +62,28 @@ router = APIRouter(prefix="/api")
 def _provider_call(callback):
     try:
         return callback()
-    except (BotoCoreError, ClientError) as exc:
-        code = getattr(exc, "response", {}).get("Error", {}).get("Code", "IdentityProviderError")
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Authentication failed: {code}") from exc
+    except AuthProviderError as exc:
+        raise HTTPException(exc.status_code, f"Authentication failed: {exc.code}") from exc
 
 
-def _set_auth_cookies(response: Response, tokens: dict, settings: Settings) -> None:
+def _set_auth_cookies(response: Response, tokens: AuthTokens, settings: Settings) -> None:
     common = {
         "httponly": True,
         "secure": settings.cookie_secure,
         "samesite": "lax",
         "path": "/",
     }
-    if tokens.get("AccessToken"):
-        response.set_cookie("access_token", tokens["AccessToken"], max_age=tokens.get("ExpiresIn"), **common)
-    if tokens.get("RefreshToken"):
-        response.set_cookie("refresh_token", tokens["RefreshToken"], max_age=30 * 86400, **common)
+    response.set_cookie(
+        "access_token", tokens.access_token, max_age=tokens.expires_in, **common
+    )
+    if tokens.refresh_token:
+        response.set_cookie("refresh_token", tokens.refresh_token, max_age=30 * 86400, **common)
 
 
 @router.post("/auth/signup", status_code=202)
 def signup(payload: SignupRequest, provider: IdentityProvider = Depends(get_identity_provider)):
     result = _provider_call(lambda: provider.signup(payload.email, payload.password))
-    return {"user_confirmed": result.get("UserConfirmed", False), "delivery": result.get("CodeDeliveryDetails")}
+    return {"user_confirmed": result.user_confirmed, "delivery": result.delivery}
 
 
 @router.post("/auth/confirm")
@@ -102,15 +102,13 @@ def login(
     settings: Settings = Depends(get_settings),
 ):
     tokens = _provider_call(lambda: provider.login(payload.email, payload.password))
-    if not tokens.get("AccessToken"):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authentication failed")
     _set_auth_cookies(response, tokens, settings)
     return {
-        "access_token": tokens["AccessToken"],
-        "id_token": tokens.get("IdToken"),
-        "refresh_token": tokens.get("RefreshToken"),
-        "expires_in": tokens.get("ExpiresIn"),
-        "token_type": tokens.get("TokenType", "Bearer"),
+        "access_token": tokens.access_token,
+        "id_token": tokens.id_token,
+        "refresh_token": tokens.refresh_token,
+        "expires_in": tokens.expires_in,
+        "token_type": tokens.token_type,
     }
 
 
@@ -145,7 +143,7 @@ def refresh_session(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Refresh token required")
     tokens = _provider_call(lambda: provider.refresh(refresh_token))
     _set_auth_cookies(response, tokens, settings)
-    return {"access_token": tokens.get("AccessToken"), "expires_in": tokens.get("ExpiresIn")}
+    return {"access_token": tokens.access_token, "expires_in": tokens.expires_in}
 
 
 @router.post("/auth/logout", status_code=204)

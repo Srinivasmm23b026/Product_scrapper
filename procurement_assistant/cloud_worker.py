@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
+import time
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
-from pathlib import Path
 
-import boto3
 from sqlalchemy import select
 
 from procurement_assistant.database import build_engine, build_session_factory
@@ -24,6 +22,8 @@ from procurement_assistant.models import (
     SupplierProduct,
 )
 from procurement_assistant.normalization import normalize_product_name, parse_pack
+from procurement_assistant.providers.observability import configure_metrics, log_event
+from procurement_assistant.providers.storage import ObjectStorage, configure_storage
 from procurement_assistant.scraping.service import ScrapeRunService
 from procurement_assistant.scraping.types import OfferObservationInput, ScrapeResult
 from procurement_assistant.settings import Settings
@@ -42,23 +42,12 @@ def _decimal(value) -> Decimal | None:
     return Decimal(str(value)) if value is not None else None
 
 
-def _snapshot(settings: Settings, source: str, products: list[dict]) -> str:
+def _snapshot(
+    settings: Settings, storage: ObjectStorage, source: str, products: list[dict]
+) -> str:
     timestamp = datetime.now(UTC).strftime("%Y/%m/%d/%H%M%S")
     key = f"{settings.raw_snapshot_prefix.rstrip('/')}/{source}/{timestamp}-{uuid.uuid4()}.json"
-    body = json.dumps(products, default=str, ensure_ascii=False).encode()
-    if settings.raw_snapshot_bucket:
-        boto3.client("s3", region_name=settings.aws_region).put_object(
-            Bucket=settings.raw_snapshot_bucket,
-            Key=key,
-            Body=body,
-            ContentType="application/json",
-            ServerSideEncryption="AES256",
-        )
-        return f"s3://{settings.raw_snapshot_bucket}/{key}"
-    target = Path(os.environ.get("RAW_SNAPSHOT_DIR", "/tmp/procurement-raw")) / key
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(body)
-    return str(target)
+    return storage.put_json(key, products)
 
 
 def _catalog_offer(session, supplier, location, row: dict) -> SupplierOffer:
@@ -150,13 +139,23 @@ def _catalog_offer(session, supplier, location, row: dict) -> SupplierOffer:
     return offer
 
 
-def build_adapter(settings, factory, source, supplier, location, expected_min):
+def build_adapter(
+    settings,
+    factory,
+    source,
+    supplier,
+    location,
+    expected_min,
+    storage: ObjectStorage | None = None,
+):
+    storage = storage or configure_storage(settings)
+
     def adapter() -> ScrapeResult:
         if source == "hyperpure" and getattr(__import__("config"), "HYPERPURE_ACCOUNTS", []):
             if not os.environ.get("HYPERPURE_OTP"):
                 raise RuntimeError("non-interactive Hyperpure run requires HYPERPURE_OTP")
         products = SCRAPERS[source]()
-        raw_reference = _snapshot(settings, source, products)
+        raw_reference = _snapshot(settings, storage, source, products)
         observed_at = datetime.now(UTC)
         observations = []
         warnings = []
@@ -190,23 +189,17 @@ def build_adapter(settings, factory, source, supplier, location, expected_min):
     return adapter
 
 
-def emit_metrics(settings: Settings, source: str, run: ScrapeRun) -> None:
-    if not settings.cloudwatch_namespace:
-        return
-    status_value = 1 if run.status == "complete" else 0
-    boto3.client("cloudwatch", region_name=settings.aws_region).put_metric_data(
-        Namespace=settings.cloudwatch_namespace,
-        MetricData=[
-            {"MetricName": "RunComplete", "Dimensions": [{"Name": "Supplier", "Value": source}], "Value": status_value},
-            {"MetricName": "ObservedProducts", "Dimensions": [{"Name": "Supplier", "Value": source}], "Value": run.observed_count},
-            {"MetricName": "RunFailure", "Dimensions": [{"Name": "Supplier", "Value": source}], "Value": 0 if run.status == "complete" else 1},
-        ],
-    )
-
-
 def run(source: str, supplier_location_id: uuid.UUID, expected_min: int) -> int:
+    started = time.monotonic()
     settings = Settings()
-    factory = build_session_factory(build_engine(settings.resolved_database_url))
+    factory = build_session_factory(
+        build_engine(
+            settings.resolved_database_url,
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
+            use_null_pool=settings.db_use_null_pool,
+        )
+    )
     with factory() as session:
         location = session.get(SupplierLocation, supplier_location_id)
         if location is None:
@@ -216,22 +209,24 @@ def run(source: str, supplier_location_id: uuid.UUID, expected_min: int) -> int:
             raise ValueError("supplier location does not belong to requested supplier")
         supplier_id, location_id = supplier.id, location.id
     service = ScrapeRunService(factory)
-    adapter = build_adapter(settings, factory, source, supplier, location, expected_min)
+    adapter = build_adapter(
+        settings,
+        factory,
+        source,
+        supplier,
+        location,
+        expected_min,
+        configure_storage(settings),
+    )
     run_id = service.execute(
         supplier_id=supplier_id, supplier_location_id=location_id, adapter=adapter
     )
     with factory() as session:
         scrape_run = session.get(ScrapeRun, run_id)
-        LOGGER.info(
-            "supplier=%s run_id=%s status=%s observed=%d expected=%s",
-            source,
-            run_id,
-            scrape_run.status,
-            scrape_run.observed_count,
-            scrape_run.expected_count,
+        configure_metrics(settings).record_scrape_run(
+            source, scrape_run, time.monotonic() - started
         )
-        emit_metrics(settings, source, scrape_run)
-        return 0 if scrape_run.status in {"complete", "partial"} else 1
+        return 0 if scrape_run.status == "complete" else 1
 
 
 def main() -> int:
@@ -253,7 +248,18 @@ def main() -> int:
     if args.expected_min < 1:
         parser.error("--expected-min must be positive")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    return run(args.supplier, args.supplier_location_id, args.expected_min)
+    try:
+        return run(args.supplier, args.supplier_location_id, args.expected_min)
+    except Exception as exc:
+        log_event(
+            "scrape_worker_crashed",
+            supplier=args.supplier,
+            supplier_location=str(args.supplier_location_id),
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        LOGGER.exception("worker failed before a terminal scrape result")
+        return 1
 
 
 if __name__ == "__main__":

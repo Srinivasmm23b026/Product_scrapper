@@ -59,8 +59,8 @@ RLS and therefore must exist only as a GitHub Actions secret. The web service do
 
 ## Web deployment
 
-Connect this repository to a Render Blueprint using `render.yaml`. Supply these secret values in the
-dashboard:
+Connect this repository to a Render Blueprint using `render.yaml`. Its auto-deploy policy waits for
+GitHub checks to pass. Supply these secret values in the dashboard:
 
 - `DATABASE_URL`: Supavisor session-mode URL with `postgresql+psycopg://`;
 - `SUPABASE_URL`;

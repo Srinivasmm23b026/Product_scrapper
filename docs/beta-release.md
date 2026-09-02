@@ -13,6 +13,9 @@
 - secret and generated-artifact scans
 - authenticated E2E: search → compare → purchase → inventory + expense + unchanged history
 
+The `V1 validation` workflow enforces the offline gates on pushes and pull requests. Render uses
+`autoDeployTrigger: checksPass`, so a failing repository check does not trigger an application deploy.
+
 ## Supabase/hosting gates
 
 - Supabase project exists and its region/data terms are accepted

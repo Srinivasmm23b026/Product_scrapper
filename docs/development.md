@@ -27,7 +27,13 @@ Run the app and checks:
 .venv/bin/cfn-lint infrastructure/aws/foundation.yaml infrastructure/aws/workload.yaml
 node --check procurement_assistant/static/app.js
 node --check procurement_assistant/static/auth.js
+node --check procurement_assistant/static/sw.js
+.venv/bin/python scripts/audit_repository.py
 ```
+
+The `V1 validation` GitHub workflow repeats these gates, upgrades an empty PostgreSQL 16 database,
+and builds the deployable Docker image. The audit command reports only the file, line, and credential
+class; it deliberately does not print a suspected secret value.
 
 The offline suite uses frozen supplier fixtures. `python main.py` remains the legacy SQLite scraper
 and performs live writes; do not use it as a smoke test. See the migration guide before importing.

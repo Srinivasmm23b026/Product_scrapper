@@ -53,8 +53,12 @@ Run quality gates:
 ./.venv/bin/ruff check .
 ./.venv/bin/pytest -q
 ./.venv/bin/cfn-lint infrastructure/aws/foundation.yaml infrastructure/aws/workload.yaml
+./.venv/bin/python scripts/audit_repository.py
 docker build -t procurement-assistant:v1 .
 ```
+
+`.github/workflows/ci.yml` runs the same offline gates with PostgreSQL 16 and builds the deployment
+image before Render's check-gated auto-deploy can proceed.
 
 ## Documentation
 

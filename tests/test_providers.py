@@ -213,11 +213,17 @@ def test_supabase_rls_covers_every_application_table() -> None:
 def test_beta_deployment_keeps_server_secrets_out_of_web_configuration() -> None:
     render = Path("render.yaml").read_text()
     workflow = Path(".github/workflows/scheduled-scrape.yml").read_text()
+    validation = Path(".github/workflows/ci.yml").read_text()
     assert "SUPABASE_SECRET_KEY" not in render
+    assert "autoDeployTrigger: checksPass" in render
     assert "secrets.SUPABASE_SECRET_KEY" in workflow
     assert "DB_USE_NULL_POOL: 'true'" in workflow
     assert "bigbasket" not in workflow
     assert "deliverit" not in workflow
+    assert "image: postgres:16-alpine" in validation
+    assert "python -m alembic upgrade head" in validation
+    assert "python scripts/audit_repository.py" in validation
+    assert "docker build" in validation
 
 
 def test_procurement_domain_has_no_cloud_provider_imports() -> None:

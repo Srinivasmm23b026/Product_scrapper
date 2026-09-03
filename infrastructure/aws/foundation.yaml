@@ -1,0 +1,209 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Cost-conscious Procurement Assistant V1 foundation (no application workloads)
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: procurement-assistant
+  Environment:
+    Type: String
+    Default: beta
+    AllowedValues: [beta]
+  AlertEmail:
+    Type: String
+    Description: Human-owned address for budget and operational alert confirmation
+  MonthlyBudgetUsd:
+    Type: Number
+    Default: 50
+    MinValue: 1
+  DatabaseUsername:
+    Type: String
+    Default: procurement_admin
+    NoEcho: true
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.24.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags: [{Key: Project, Value: !Ref ProjectName}, {Key: Environment, Value: !Ref Environment}]
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: {VpcId: !Ref Vpc, InternetGatewayId: !Ref InternetGateway}
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.24.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.24.1.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: {VpcId: !Ref Vpc}
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  SubnetRouteA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {SubnetId: !Ref PublicSubnetA, RouteTableId: !Ref PublicRouteTable}
+  SubnetRouteB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {SubnetId: !Ref PublicSubnetB, RouteTableId: !Ref PublicRouteTable}
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Egress and ALB ingress for Fargate tasks
+      VpcId: !Ref Vpc
+      SecurityGroupEgress: [{IpProtocol: -1, CidrIp: 0.0.0.0/0}]
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PostgreSQL from application tasks only
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref TaskSecurityGroup}
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Procurement beta database subnets
+      SubnetIds: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: postgres
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: 20
+      MaxAllocatedStorage: 50
+      StorageType: gp3
+      StorageEncrypted: true
+      DBName: procurement
+      MasterUsername: !Ref DatabaseUsername
+      ManageMasterUserPassword: true
+      BackupRetentionPeriod: 7
+      DeletionProtection: true
+      MultiAZ: false
+      PubliclyAccessible: false
+      AutoMinorVersionUpgrade: true
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      VPCSecurityGroups: [!Ref DatabaseSecurityGroup]
+      Tags: [{Key: Project, Value: !Ref ProjectName}, {Key: Environment, Value: !Ref Environment}]
+  RawSnapshots:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration: {Status: Enabled}
+      LifecycleConfiguration:
+        Rules:
+          - Id: ArchiveAndExpireRawSnapshots
+            Status: Enabled
+            Transitions: [{StorageClass: STANDARD_IA, TransitionInDays: 30}]
+            ExpirationInDays: 180
+            NoncurrentVersionExpiration: {NoncurrentDays: 30}
+  ContainerRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      ImageScanningConfiguration: {ScanOnPush: true}
+      ImageTagMutability: IMMUTABLE
+      LifecyclePolicy:
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"retain 10 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}'
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterSettings: [{Name: containerInsights, Value: enabled}]
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      DeletionProtection: ACTIVE
+      AccountRecoverySetting:
+        RecoveryMechanisms: [{Name: verified_email, Priority: 1}]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+      UserPoolTags: {Project: !Ref ProjectName, Environment: !Ref Environment}
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits: {AccessToken: minutes, IdToken: minutes, RefreshToken: days}
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      KmsMasterKeyId: alias/aws/sns
+      Tags: [{Key: Project, Value: !Ref ProjectName}]
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Properties: {Protocol: email, Endpoint: !Ref AlertEmail, TopicArn: !Ref AlertTopic}
+  AppLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {RetentionInDays: 14}
+  WorkerLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {RetentionInDays: 30}
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetLimit: {Amount: !Ref MonthlyBudgetUsd, Unit: USD}
+        BudgetName: !Sub '${ProjectName}-${Environment}-monthly'
+        BudgetType: COST
+        TimeUnit: MONTHLY
+      NotificationsWithSubscribers:
+        - Notification: {ComparisonOperator: GREATER_THAN, NotificationType: FORECASTED, Threshold: 80, ThresholdType: PERCENTAGE}
+          Subscribers: [{Address: !Ref AlertEmail, SubscriptionType: EMAIL}]
+        - Notification: {ComparisonOperator: GREATER_THAN, NotificationType: ACTUAL, Threshold: 100, ThresholdType: PERCENTAGE}
+          Subscribers: [{Address: !Ref AlertEmail, SubscriptionType: EMAIL}]
+
+Outputs:
+  VpcId: {Value: !Ref Vpc}
+  PublicSubnetAId: {Value: !Ref PublicSubnetA}
+  PublicSubnetBId: {Value: !Ref PublicSubnetB}
+  TaskSecurityGroupId: {Value: !Ref TaskSecurityGroup}
+  DatabaseEndpoint: {Value: !GetAtt Database.Endpoint.Address}
+  DatabaseSecretArn: {Value: !GetAtt Database.MasterUserSecret.SecretArn}
+  SnapshotBucket: {Value: !Ref RawSnapshots}
+  RepositoryUri: {Value: !GetAtt ContainerRepository.RepositoryUri}
+  ClusterArn: {Value: !GetAtt Cluster.Arn}
+  UserPoolId: {Value: !Ref UserPool}
+  UserPoolClientId: {Value: !Ref UserPoolClient}
+  AlertTopicArn: {Value: !Ref AlertTopic}
+  AppLogGroup: {Value: !Ref AppLogs}
+  WorkerLogGroup: {Value: !Ref WorkerLogs}

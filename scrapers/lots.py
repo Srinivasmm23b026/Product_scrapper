@@ -91,7 +91,11 @@ def _get_menu_id(session: requests.Session, slug: str):
     url = f"https://www.lotswholesale.com/category/{slug}"
     resp = session.get(url, headers=config.HEADERS, timeout=config.REQUEST_TIMEOUT)
     resp.raise_for_status()
-    m = NEXT_DATA_RE.search(resp.text)
+    return _extract_menu_id(resp.text)
+
+
+def _extract_menu_id(html: str):
+    m = NEXT_DATA_RE.search(html)
     if not m:
         return None
     data = json.loads(m.group(1))

@@ -14,6 +14,15 @@ _WEIGHT_RE = re.compile(rf"({_NUM})\s*(kg|kilogram|kilograms|g|gm|gram|grams)\b"
 _VOLUME_RE = re.compile(rf"({_NUM})\s*(l|ltr|litre|liter|litres|liters|ml)\b", re.I)
 _COUNT_RE = re.compile(rf"({_NUM})\s*(pc|pcs|piece|pieces|ea|nos|unit|units)\b", re.I)
 _PACK_OF_RE = re.compile(r"pack\s+of\s+(\d+)", re.I)
+_WEIGHT_MULTIPACK_RE = re.compile(
+    rf"({_NUM})\s*[x×]\s*({_NUM})\s*(kg|kilogram|kilograms|g|gm|gram|grams)\b", re.I
+)
+_VOLUME_MULTIPACK_RE = re.compile(
+    rf"({_NUM})\s*[x×]\s*({_NUM})\s*(l|ltr|litre|liter|litres|liters|ml)\b", re.I
+)
+_COUNT_MULTIPACK_RE = re.compile(
+    rf"({_NUM})\s*[x×]\s*({_NUM})\s*(pc|pcs|piece|pieces|ea|nos|unit|units)\b", re.I
+)
 # Case/carton multiplier suffix, e.g. "500 G Pk40" = 40 x 500g units in one
 # priced line item (seen throughout Lots Wholesale's B2B bulk-pack naming).
 # Without this, a case price gets divided by a single unit's weight and
@@ -41,6 +50,25 @@ def parse_unit(*texts):
         for text in texts:
             if not text:
                 continue
+            m = _WEIGHT_MULTIPACK_RE.search(text)
+            if m:
+                qty = (
+                    float(m.group(1))
+                    * float(m.group(2))
+                    * _WEIGHT_TO_KG[m.group(3).lower()]
+                )
+                return round(qty, 6), "kg"
+            m = _VOLUME_MULTIPACK_RE.search(text)
+            if m:
+                qty = (
+                    float(m.group(1))
+                    * float(m.group(2))
+                    * _VOLUME_TO_L[m.group(3).lower()]
+                )
+                return round(qty, 6), "l"
+            m = _COUNT_MULTIPACK_RE.search(text)
+            if m:
+                return round(float(m.group(1)) * float(m.group(2)), 6), "pc"
             mm = _MULTIPLIER_RE.search(text)
             if not mm:
                 mm = _PACK_OF_RE.search(text)

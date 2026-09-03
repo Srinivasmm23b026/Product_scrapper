@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: procurement-assistant-beta
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeployTrigger: checksPass
+    envVars:
+      - {key: APP_ENV, value: beta}
+      - {key: AUTH_PROVIDER, value: supabase}
+      - {key: COOKIE_SECURE, value: 'true'}
+      - {key: DB_POOL_SIZE, value: '3'}
+      - {key: DB_MAX_OVERFLOW, value: '1'}
+      - {key: METRICS_PROVIDER, value: logs}
+      - {key: DATABASE_URL, sync: false}
+      - {key: SUPABASE_URL, sync: false}
+      - {key: SUPABASE_PUBLISHABLE_KEY, sync: false}
+      - {key: AUTH_REDIRECT_URL, sync: false}

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Beta location</p><h1>Procurement overview</h1></div><a class="primary" href="/compare">Compare a product</a></section>
+<section class="metric-grid">
+  <article class="metric"><span>Spend this month</span><strong id="month-spend">—</strong></article>
+  <article class="metric"><span>Recent purchases</span><strong id="purchase-count">—</strong></article>
+  <article class="metric"><span>Inventory items</span><strong id="inventory-count">—</strong></article>
+  <article class="metric"><span>Supplier freshness</span><strong id="freshness">—</strong></article>
+</section>
+<section class="split-grid">
+  <article class="panel"><div class="panel-title"><h2>Recent purchases</h2><a href="/purchases">View all</a></div><div id="recent-purchases" class="empty-state">Loading…</div></article>
+  <article class="panel"><div class="panel-title"><h2>Scraper health</h2></div><div id="scraper-health" class="empty-state">Loading…</div></article>
+</section>
+{% endblock %}

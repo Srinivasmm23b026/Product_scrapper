@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Quantity-aware sourcing</p><h1>Compare supplier offers</h1><p>Best unit price and best purchase cost are ranked separately.</p></div></section>
+<section class="panel compare-form">
+  <label>Product<input id="product-search" type="search" placeholder="Rice, tomato, oil…" autocomplete="off"></label>
+  <div id="search-results" class="search-results"></div>
+  <label>Required quantity<input id="required-quantity" type="number" min="0.001" step="0.001" value="1"></label>
+  <label>Unit<select id="required-unit"><option value="kg">kg</option><option value="g">g</option><option value="l">L</option><option value="ml">ml</option><option value="piece">piece</option></select></label>
+  <button id="compare-button" class="primary" type="button" disabled>Compare offers</button>
+</section>
+<div id="compare-message" class="notice">Search and select a product to begin.</div>
+<section id="offer-results" class="offer-grid"></section>
+<section id="history-panel" class="panel hidden"><div class="panel-title"><h2>Price history</h2><span id="history-summary"></span></div><canvas id="history-chart" height="180"></canvas><div id="history-quality" class="notice"></div></section>
+{% endblock %}

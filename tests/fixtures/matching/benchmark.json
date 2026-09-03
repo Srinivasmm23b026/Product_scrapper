@@ -1,0 +1,68 @@
+[
+  {
+    "case": "same branded oil and pack",
+    "source_name": "Fortune Sunlite Refined Sunflower Oil - 1 L Pouch",
+    "source_brand": "Fortune",
+    "source_pack_text": "1 L",
+    "candidate_name": "sunlite refined sunflower oil",
+    "candidate_brand": "Fortune",
+    "candidate_unit": "l",
+    "candidate_total": "1",
+    "expected": "AUTO_MATCH"
+  },
+  {
+    "case": "same branded product cross pack",
+    "source_name": "Fortune Sunlite Refined Sunflower Oil 5 L",
+    "source_brand": "Fortune",
+    "source_pack_text": "5 L",
+    "candidate_name": "sunlite refined sunflower oil",
+    "candidate_brand": "Fortune",
+    "candidate_unit": "l",
+    "candidate_total": "1",
+    "expected": "REVIEW"
+  },
+  {
+    "case": "different product same brand and pack",
+    "source_name": "Amul Butter Salted 500 g",
+    "source_brand": "Amul",
+    "source_pack_text": "500 g",
+    "candidate_name": "diced cheese blend",
+    "candidate_brand": "Amul",
+    "candidate_unit": "kg",
+    "candidate_total": "0.5",
+    "expected": "NO_MATCH"
+  },
+  {
+    "case": "different brand must not match",
+    "source_name": "Brand B Basmati Rice 1 kg",
+    "source_brand": "Brand B",
+    "source_pack_text": "1 kg",
+    "candidate_name": "basmati rice",
+    "candidate_brand": "Brand A",
+    "candidate_unit": "kg",
+    "candidate_total": "1",
+    "expected": "NO_MATCH"
+  },
+  {
+    "case": "empty brand cannot auto match",
+    "source_name": "Premium Basmati Rice 1 kg",
+    "source_brand": null,
+    "source_pack_text": "1 kg",
+    "candidate_name": "premium basmati rice",
+    "candidate_brand": null,
+    "candidate_unit": "kg",
+    "candidate_total": "1",
+    "expected": "REVIEW"
+  },
+  {
+    "case": "incompatible units",
+    "source_name": "Tomato Ketchup 1 L",
+    "source_brand": "Test",
+    "source_pack_text": "1 L",
+    "candidate_name": "tomato ketchup",
+    "candidate_brand": "Test",
+    "candidate_unit": "kg",
+    "candidate_total": "1",
+    "expected": "NO_MATCH"
+  }
+]

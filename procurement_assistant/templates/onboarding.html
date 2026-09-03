@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="auth-card panel">
+  <p class="eyebrow">One fixed beta location</p>
+  <h1>Set up your restaurant</h1>
+  <p>Supplier locations are verified separately; entering a pincode does not guess a store.</p>
+  <form id="onboarding-form">
+    <label>Restaurant name<input id="restaurant-name" required maxlength="200"></label>
+    <label>Location label<input id="location-label" required maxlength="120" value="Main kitchen"></label>
+    <label>City<input id="location-city" required maxlength="120"></label>
+    <label>Pincode<input id="location-pincode" required minlength="3" maxlength="20" inputmode="numeric"></label>
+    <button class="primary" type="submit">Create restaurant</button>
+  </form>
+</section>
+{% endblock %}

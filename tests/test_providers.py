@@ -218,6 +218,10 @@ def test_beta_deployment_keeps_server_secrets_out_of_web_configuration() -> None
     assert "autoDeployTrigger: checksPass" in render
     assert "secrets.SUPABASE_SECRET_KEY" in workflow
     assert "DB_USE_NULL_POOL: 'true'" in workflow
+    assert "optional_location: true" in workflow
+    assert "Skip Hyperpure without a verified location" in workflow
+    assert "Skipping Hyperpure: no verified Hyperpure supplier location is configured." in workflow
+    assert "matrix.optional_location && env.SUPPLIER_LOCATION_ID == ''" in workflow
     assert "bigbasket" not in workflow
     assert "deliverit" not in workflow
     assert "image: postgres:16-alpine" in validation

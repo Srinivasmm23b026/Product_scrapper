@@ -1,25 +1,166 @@
-import { useMemo, useState } from "react";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createContext, useContext, useMemo, useState } from "react";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { Bell, Box, ChartNoAxesCombined, Check, ChevronDown, CircleAlert, ClipboardList, LoaderCircle, LogOut, MapPin, Menu, PackageCheck, ReceiptText, Search, Settings, ShieldCheck, Sparkles, TrendingUp, X, type LucideIcon } from "lucide-react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  Link,
+  Navigate,
+  NavLink,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import {
+  Bell,
+  Box,
+  ChartNoAxesCombined,
+  Check,
+  ChevronDown,
+  CircleAlert,
+  ClipboardList,
+  ExternalLink,
+  LoaderCircle,
+  LogOut,
+  MapPin,
+  Menu,
+  PackageCheck,
+  ReceiptText,
+  Search,
+  Settings,
+  ShieldCheck,
+  Sparkles,
+  TrendingUp,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { api, type History, type Offer, type Product } from "./api";
 import { cn, dateTime, money, shortDate } from "./lib";
 
-const motionProps = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.28 } };
-const queryKeys = { session: ["session"], analytics: ["analytics"], purchases: ["purchases"], inventory: ["inventory"], runs: ["runs"] };
+const motionProps = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.28 },
+};
+const queryKeys = {
+  session: ["session"],
+  analytics: ["analytics"],
+  purchases: ["purchases"],
+  inventory: ["inventory"],
+  runs: ["runs"],
+};
 
-function LoadingShell() { return <div className="grid min-h-screen place-items-center bg-canvas"><LoaderCircle className="animate-spin text-moss" size={30} /></div>; }
-function ErrorState({ error }: { error: unknown }) { return <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800"><CircleAlert className="mb-2" size={20} />{error instanceof Error ? error.message : "Something went wrong. Please try again."}</div>; }
-function Skeleton({ className }: { className?: string }) { return <div className={cn("animate-pulse rounded-xl bg-slate-200/80", className)} />; }
+type Notice = { id: number; title: string; detail?: string };
+const NoticeContext = createContext<{
+  notify: (title: string, detail?: string) => void;
+} | null>(null);
 
-function AuthGate({ children, onboarding = false }: { children: React.ReactNode; onboarding?: boolean }) {
-  const session = useQuery({ queryKey: queryKeys.session, queryFn: api.session });
+function NoticeProvider({ children }: { children: React.ReactNode }) {
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const notify = (title: string, detail?: string) => {
+    const next = { id: Date.now(), title, detail };
+    setNotice(next);
+    window.setTimeout(() => {
+      setNotice((current) => (current?.id === next.id ? null : current));
+    }, 4000);
+  };
+  return (
+    <NoticeContext.Provider value={{ notify }}>
+      {children}
+      <AnimatePresence>
+        {notice && (
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.98 }}
+            role="status"
+            className="fixed bottom-5 right-5 z-[60] flex max-w-sm items-start gap-3 rounded-2xl border border-emerald-200 bg-white p-4 shadow-lift"
+          >
+            <span className="mt-0.5 rounded-full bg-emerald-100 p-1 text-emerald-700">
+              <Check size={15} />
+            </span>
+            <div>
+              <p className="text-sm font-bold text-ink">{notice.title}</p>
+              {notice.detail && (
+                <p className="mt-0.5 text-xs leading-5 text-slate-500">
+                  {notice.detail}
+                </p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </NoticeContext.Provider>
+  );
+}
+
+function useNotice() {
+  const context = useContext(NoticeContext);
+  if (!context) throw new Error("useNotice must be used inside NoticeProvider");
+  return context;
+}
+
+function LoadingShell() {
+  return (
+    <div className="grid min-h-screen place-items-center bg-canvas">
+      <LoaderCircle className="animate-spin text-moss" size={30} />
+    </div>
+  );
+}
+function ErrorState({ error }: { error: unknown }) {
+  return (
+    <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800">
+      <CircleAlert className="mb-2" size={20} />
+      {error instanceof Error
+        ? error.message
+        : "Something went wrong. Please try again."}
+    </div>
+  );
+}
+function Skeleton({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn("animate-pulse rounded-xl bg-slate-200/80", className)}
+    />
+  );
+}
+
+function AuthGate({
+  children,
+  onboarding = false,
+}: {
+  children: React.ReactNode;
+  onboarding?: boolean;
+}) {
+  const session = useQuery({
+    queryKey: queryKeys.session,
+    queryFn: api.session,
+  });
   if (session.isPending) return <LoadingShell />;
   if (session.error) return <Navigate to="/login" replace />;
-  if (onboarding && session.data.onboarded) return <Navigate to="/dashboard" replace />;
-  if (!onboarding && !session.data.onboarded) return <Navigate to="/onboarding" replace />;
+  if (onboarding && session.data.onboarded)
+    return <Navigate to="/dashboard" replace />;
+  if (!onboarding && !session.data.onboarded)
+    return <Navigate to="/onboarding" replace />;
   return children;
 }
 
@@ -34,79 +175,2150 @@ const navigation: { to: string; label: string; icon: LucideIcon }[] = [
 
 function Shell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const session = useQuery({ queryKey: queryKeys.session, queryFn: api.session });
+  const session = useQuery({
+    queryKey: queryKeys.session,
+    queryFn: api.session,
+  });
   const navigate = useNavigate();
   const client = useQueryClient();
-  const logout = useMutation({ mutationFn: api.logout, onSuccess: () => { client.clear(); navigate("/login"); } });
+  const logout = useMutation({
+    mutationFn: api.logout,
+    onSuccess: () => {
+      client.clear();
+      navigate("/login");
+    },
+  });
   const location = useLocation();
   const reduced = useReducedMotion();
-  const pageTitle = navigation.find((item) => item.to === location.pathname)?.label ?? "Procurement Assistant";
-  const sidebar = <aside className="flex h-full w-72 flex-col border-r border-white/10 bg-forest px-4 py-5 text-white shadow-2xl">
-    <Link to="/dashboard" className="mb-9 flex items-center gap-3 px-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-lime-100 text-lg font-black text-forest">PA</span><span><strong className="block text-sm">Procurement</strong><span className="text-xs text-emerald-100/65">Restaurant operations</span></span></Link>
-    <nav className="space-y-1" aria-label="Primary navigation">{navigation.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => cn("flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition", isActive ? "bg-white/14 text-white shadow-inner" : "text-emerald-50/70 hover:bg-white/8 hover:text-white")}><Icon size={18} />{label}</NavLink>)}</nav>
-    <div className="mt-auto rounded-2xl border border-white/10 bg-white/7 p-3"><div className="flex items-center gap-2 text-xs text-emerald-50/75"><MapPin size={14}/>{session.data?.location?.label ?? "Beta location"}</div><p className="mt-1 truncate text-sm font-semibold">{session.data?.restaurant?.name}</p><p className="mt-1 text-xs text-emerald-50/60">{session.data?.location?.city} · {session.data?.location?.pincode}</p></div>
-  </aside>;
-  return <div className="min-h-screen bg-canvas text-ink"><AnimatePresence>{open && <motion.div {...(reduced ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })} className="fixed inset-0 z-40 bg-slate-950/45 lg:hidden" onClick={() => setOpen(false)}><motion.div {...(reduced ? {} : { initial: { x: -260 }, animate: { x: 0 }, exit: { x: -260 } })} className="h-full" onClick={(event) => event.stopPropagation()}>{sidebar}</motion.div></motion.div>}</AnimatePresence><div className="hidden fixed inset-y-0 left-0 z-30 lg:block">{sidebar}</div><main className="min-h-screen lg:pl-72"><header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-slate-200/70 bg-canvas/90 px-5 backdrop-blur lg:px-10"><div className="flex items-center gap-3"><button className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="Open navigation"><Menu /></button><div><p className="text-xs font-semibold uppercase tracking-[0.17em] text-moss">Operations workspace</p><h1 className="text-lg font-bold tracking-tight">{pageTitle}</h1></div></div><div className="flex items-center gap-3"><div className="hidden items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 md:flex"><span className="h-2 w-2 rounded-full bg-emerald-500" />Live workspace</div><button className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label="Notifications"><Bell size={19}/></button><div className="group relative"><button className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold shadow-sm"><span className="grid h-7 w-7 place-items-center rounded-lg bg-moss text-xs text-white">{session.data?.email?.slice(0, 1).toUpperCase() || "U"}</span><span className="hidden max-w-32 truncate sm:block">{session.data?.email}</span><ChevronDown size={14}/></button><div className="invisible absolute right-0 top-full z-30 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1 opacity-0 shadow-lift transition group-hover:visible group-hover:opacity-100"><button onClick={() => logout.mutate()} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-700 hover:bg-rose-50"><LogOut size={15}/>Log out</button></div></div></div></header><AnimatePresence mode="wait"><motion.div key={location.pathname} {...(reduced ? {} : motionProps)} className="mx-auto max-w-7xl p-5 pb-16 lg:p-10">{children}</motion.div></AnimatePresence></main></div>;
+  const pageTitle =
+    navigation.find((item) => item.to === location.pathname)?.label ??
+    "Procurement Assistant";
+  const sidebar = (
+    <aside className="flex h-full w-72 flex-col border-r border-white/10 bg-forest px-4 py-5 text-white shadow-2xl">
+      <Link to="/dashboard" className="mb-9 flex items-center gap-3 px-3">
+        <span className="grid h-10 w-10 place-items-center rounded-xl bg-lime-100 text-lg font-black text-forest">
+          PA
+        </span>
+        <span>
+          <strong className="block text-sm">Procurement</strong>
+          <span className="text-xs text-emerald-100/65">
+            Restaurant operations
+          </span>
+        </span>
+      </Link>
+      <nav className="space-y-1" aria-label="Primary navigation">
+        {navigation.map(({ to, label, icon: Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            onClick={() => setOpen(false)}
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition",
+                isActive
+                  ? "bg-white/14 text-white shadow-inner"
+                  : "text-emerald-50/70 hover:bg-white/8 hover:text-white",
+              )
+            }
+          >
+            <Icon size={18} />
+            {label}
+          </NavLink>
+        ))}
+      </nav>
+      <div className="mt-auto rounded-2xl border border-white/10 bg-white/7 p-3">
+        <div className="flex items-center gap-2 text-xs text-emerald-50/75">
+          <MapPin size={14} />
+          {session.data?.location?.label ?? "Beta location"}
+        </div>
+        <p className="mt-1 truncate text-sm font-semibold">
+          {session.data?.restaurant?.name}
+        </p>
+        <p className="mt-1 text-xs text-emerald-50/60">
+          {session.data?.location?.city} · {session.data?.location?.pincode}
+        </p>
+      </div>
+    </aside>
+  );
+  return (
+    <div className="min-h-screen bg-canvas text-ink">
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            {...(reduced
+              ? {}
+              : {
+                  initial: { opacity: 0 },
+                  animate: { opacity: 1 },
+                  exit: { opacity: 0 },
+                })}
+            className="fixed inset-0 z-40 bg-slate-950/45 lg:hidden"
+            onClick={() => setOpen(false)}
+          >
+            <motion.div
+              {...(reduced
+                ? {}
+                : {
+                    initial: { x: -260 },
+                    animate: { x: 0 },
+                    exit: { x: -260 },
+                  })}
+              className="h-full"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {sidebar}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <div className="hidden fixed inset-y-0 left-0 z-30 lg:block">
+        {sidebar}
+      </div>
+      <main className="min-h-screen lg:pl-72">
+        <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-slate-200/70 bg-canvas/90 px-5 backdrop-blur lg:px-10">
+          <div className="flex items-center gap-3">
+            <button
+              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
+              onClick={() => setOpen(true)}
+              aria-label="Open navigation"
+            >
+              <Menu />
+            </button>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.17em] text-moss">
+                Operations workspace
+              </p>
+              <h1 className="text-lg font-bold tracking-tight">{pageTitle}</h1>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 md:flex">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Live workspace
+            </div>
+            <button
+              className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
+              aria-label="Notifications"
+            >
+              <Bell size={19} />
+            </button>
+            <div className="group relative">
+              <button className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold shadow-sm">
+                <span className="grid h-7 w-7 place-items-center rounded-lg bg-moss text-xs text-white">
+                  {session.data?.email?.slice(0, 1).toUpperCase() || "U"}
+                </span>
+                <span className="hidden max-w-32 truncate sm:block">
+                  {session.data?.email}
+                </span>
+                <ChevronDown size={14} />
+              </button>
+              <div className="invisible absolute right-0 top-full z-30 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1 opacity-0 shadow-lift transition group-hover:visible group-hover:opacity-100">
+                <button
+                  onClick={() => logout.mutate()}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-700 hover:bg-rose-50"
+                >
+                  <LogOut size={15} />
+                  Log out
+                </button>
+              </div>
+            </div>
+          </div>
+        </header>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={location.pathname}
+            {...(reduced ? {} : motionProps)}
+            className="mx-auto max-w-7xl p-5 pb-16 lg:p-10"
+          >
+            {children}
+          </motion.div>
+        </AnimatePresence>
+      </main>
+    </div>
+  );
 }
 
 function AuthPage() {
-  const [mode, setMode] = useState<"login" | "signup" | "confirm" | "forgot" | "reset">("login");
-  const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [code, setCode] = useState(""); const [showPassword, setShowPassword] = useState(false); const [message, setMessage] = useState("");
-  const navigate = useNavigate(); const client = useQueryClient();
-  const mutation = useMutation({ mutationFn: async () => {
-    if (mode === "login") return api.login(email, password); if (mode === "signup") return api.signup(email, password); if (mode === "confirm") return api.confirm(email, code); if (mode === "forgot") return api.forgotPassword(email); return api.resetPassword(email, code, password);
-  }, onSuccess: async () => { if (mode === "login") { await client.invalidateQueries({ queryKey: queryKeys.session }); const session = await api.session(); navigate(session.onboarded ? "/dashboard" : "/onboarding"); return; } setMessage(mode === "signup" ? "Verification code sent. Check your inbox." : mode === "confirm" ? "Email confirmed. You can now sign in." : mode === "forgot" ? "Reset code sent. Check your inbox." : "Password reset. Sign in with your new password."); if (mode === "signup") setMode("confirm"); if (mode === "confirm" || mode === "reset") setMode("login"); if (mode === "forgot") setMode("reset"); } });
-  const copy = { login: ["Welcome back", "Sign in to manage your procurement workspace."], signup: ["Create your workspace", "Start with a secure restaurant operations account."], confirm: ["Verify your email", "Enter the confirmation code sent to your inbox."], forgot: ["Reset your password", "We’ll send a reset code to your email."], reset: ["Choose a new password", "Use at least 12 characters for your account."] }[mode];
-  return <div className="relative grid min-h-screen overflow-hidden bg-[#f3f6ef] lg:grid-cols-[1.15fr_.85fr]"><div className="hidden bg-forest p-12 text-white lg:flex lg:flex-col"><Link to="/login" className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-lime-100 font-black text-forest">PA</span><strong>Procurement Assistant</strong></Link><div className="my-auto max-w-xl"><span className="inline-flex items-center gap-2 rounded-full border border-emerald-200/20 bg-white/10 px-3 py-1 text-xs text-emerald-50"><Sparkles size={14}/> Restaurant procurement, made calm</span><h1 className="mt-6 text-5xl font-semibold leading-[1.05] tracking-tight">Every ingredient decision, <span className="text-lime-200">in view.</span></h1><p className="mt-6 max-w-md text-lg leading-8 text-emerald-50/75">Compare current supplier offers, record what you paid, and keep the kitchen operation ahead of tomorrow.</p></div><p className="text-xs text-emerald-50/50">Built for focused, accountable restaurant teams.</p></div><div className="flex items-center justify-center p-5"><motion.form {...motionProps} onSubmit={(event) => { event.preventDefault(); mutation.mutate(); }} className="w-full max-w-md rounded-3xl border border-white bg-white p-7 shadow-lift sm:p-10"><div className="mb-8 lg:hidden"><span className="grid h-10 w-10 place-items-center rounded-xl bg-forest font-black text-white">PA</span></div><p className="text-xs font-bold uppercase tracking-[.18em] text-moss">Restaurant beta</p><h2 className="mt-2 text-3xl font-bold tracking-tight">{copy[0]}</h2><p className="mt-2 text-sm leading-6 text-slate-500">{copy[1]}</p>{message && <div className="mt-5 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div>}<div className="mt-7 space-y-4"><label className="block text-sm font-semibold">Email<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required className="field mt-1.5" placeholder="you@restaurant.com" /></label>{mode !== "confirm" && mode !== "forgot" && <label className="block text-sm font-semibold">Password<div className="relative mt-1.5"><input value={password} onChange={(event) => setPassword(event.target.value)} type={showPassword ? "text" : "password"} required minLength={12} className="field pr-20" placeholder="At least 12 characters" /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-2 text-xs font-semibold text-moss">{showPassword ? "Hide" : "Show"}</button></div></label>}{(mode === "confirm" || mode === "reset") && <label className="block text-sm font-semibold">Confirmation code<input value={code} onChange={(event) => setCode(event.target.value)} required className="field mt-1.5" placeholder="Enter code" /></label>}</div>{mutation.error && <p className="mt-4 text-sm text-rose-700">{mutation.error.message}</p>}<button disabled={mutation.isPending} className="btn-primary mt-7 w-full">{mutation.isPending && <LoaderCircle className="animate-spin" size={17}/>} {mode === "login" ? "Sign in" : mode === "signup" ? "Send verification code" : mode === "confirm" ? "Confirm email" : mode === "forgot" ? "Send reset code" : "Reset password"}</button><div className="mt-6 flex flex-wrap gap-x-4 gap-y-2 text-sm"><button type="button" onClick={() => setMode(mode === "login" ? "signup" : "login")} className="font-semibold text-moss">{mode === "login" ? "Create an account" : "Back to sign in"}</button>{mode === "login" && <button type="button" onClick={() => setMode("forgot")} className="text-slate-500 hover:text-ink">Forgot password?</button>}</div></motion.form></div></div>;
+  const [mode, setMode] = useState<
+    "login" | "signup" | "confirm" | "forgot" | "reset"
+  >("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [message, setMessage] = useState("");
+  const navigate = useNavigate();
+  const client = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: async () => {
+      if (mode === "login") return api.login(email, password);
+      if (mode === "signup") return api.signup(email, password);
+      if (mode === "confirm") return api.confirm(email, code);
+      if (mode === "forgot") return api.forgotPassword(email);
+      return api.resetPassword(email, code, password);
+    },
+    onSuccess: async () => {
+      if (mode === "login") {
+        await client.invalidateQueries({ queryKey: queryKeys.session });
+        const session = await api.session();
+        navigate(session.onboarded ? "/dashboard" : "/onboarding");
+        return;
+      }
+      setMessage(
+        mode === "signup"
+          ? "Verification code sent. Check your inbox."
+          : mode === "confirm"
+            ? "Email confirmed. You can now sign in."
+            : mode === "forgot"
+              ? "Reset code sent. Check your inbox."
+              : "Password reset. Sign in with your new password.",
+      );
+      if (mode === "signup") setMode("confirm");
+      if (mode === "confirm" || mode === "reset") setMode("login");
+      if (mode === "forgot") setMode("reset");
+    },
+  });
+  const copy = {
+    login: ["Welcome back", "Sign in to manage your procurement workspace."],
+    signup: [
+      "Create your workspace",
+      "Start with a secure restaurant operations account.",
+    ],
+    confirm: [
+      "Verify your email",
+      "Enter the confirmation code sent to your inbox.",
+    ],
+    forgot: ["Reset your password", "We’ll send a reset code to your email."],
+    reset: [
+      "Choose a new password",
+      "Use at least 12 characters for your account.",
+    ],
+  }[mode];
+  return (
+    <div className="relative grid min-h-screen overflow-hidden bg-[#f3f6ef] lg:grid-cols-[1.15fr_.85fr]">
+      <div className="hidden bg-forest p-12 text-white lg:flex lg:flex-col">
+        <Link to="/login" className="flex items-center gap-3">
+          <span className="grid h-11 w-11 place-items-center rounded-xl bg-lime-100 font-black text-forest">
+            PA
+          </span>
+          <strong>Procurement Assistant</strong>
+        </Link>
+        <div className="my-auto max-w-xl">
+          <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200/20 bg-white/10 px-3 py-1 text-xs text-emerald-50">
+            <Sparkles size={14} /> Restaurant procurement, made calm
+          </span>
+          <h1 className="mt-6 text-5xl font-semibold leading-[1.05] tracking-tight">
+            Every ingredient decision,{" "}
+            <span className="text-lime-200">in view.</span>
+          </h1>
+          <p className="mt-6 max-w-md text-lg leading-8 text-emerald-50/75">
+            Compare current supplier offers, record what you paid, and keep the
+            kitchen operation ahead of tomorrow.
+          </p>
+        </div>
+        <p className="text-xs text-emerald-50/50">
+          Built for focused, accountable restaurant teams.
+        </p>
+      </div>
+      <div className="flex items-center justify-center p-5">
+        <motion.form
+          {...motionProps}
+          onSubmit={(event) => {
+            event.preventDefault();
+            mutation.mutate();
+          }}
+          className="w-full max-w-md rounded-3xl border border-white bg-white p-7 shadow-lift sm:p-10"
+        >
+          <div className="mb-8 lg:hidden">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-forest font-black text-white">
+              PA
+            </span>
+          </div>
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-moss">
+            Restaurant beta
+          </p>
+          <h2 className="mt-2 text-3xl font-bold tracking-tight">{copy[0]}</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">{copy[1]}</p>
+          {message && (
+            <div className="mt-5 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
+              {message}
+            </div>
+          )}
+          <div className="mt-7 space-y-4">
+            <label className="block text-sm font-semibold">
+              Email
+              <input
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                type="email"
+                required
+                className="field mt-1.5"
+                placeholder="you@restaurant.com"
+              />
+            </label>
+            {mode !== "confirm" && mode !== "forgot" && (
+              <label className="block text-sm font-semibold">
+                Password
+                <div className="relative mt-1.5">
+                  <input
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    type={showPassword ? "text" : "password"}
+                    required
+                    minLength={12}
+                    className="field pr-20"
+                    placeholder="At least 12 characters"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-2 text-xs font-semibold text-moss"
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </label>
+            )}
+            {(mode === "confirm" || mode === "reset") && (
+              <label className="block text-sm font-semibold">
+                Confirmation code
+                <input
+                  value={code}
+                  onChange={(event) => setCode(event.target.value)}
+                  required
+                  className="field mt-1.5"
+                  placeholder="Enter code"
+                />
+              </label>
+            )}
+          </div>
+          {mutation.error && (
+            <p className="mt-4 text-sm text-rose-700">
+              {mutation.error.message}
+            </p>
+          )}
+          <button
+            disabled={mutation.isPending}
+            className="btn-primary mt-7 w-full"
+          >
+            {mutation.isPending && (
+              <LoaderCircle className="animate-spin" size={17} />
+            )}{" "}
+            {mode === "login"
+              ? "Sign in"
+              : mode === "signup"
+                ? "Send verification code"
+                : mode === "confirm"
+                  ? "Confirm email"
+                  : mode === "forgot"
+                    ? "Send reset code"
+                    : "Reset password"}
+          </button>
+          <div className="mt-6 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+            <button
+              type="button"
+              onClick={() => setMode(mode === "login" ? "signup" : "login")}
+              className="font-semibold text-moss"
+            >
+              {mode === "login" ? "Create an account" : "Back to sign in"}
+            </button>
+            {mode === "login" && (
+              <button
+                type="button"
+                onClick={() => setMode("forgot")}
+                className="text-slate-500 hover:text-ink"
+              >
+                Forgot password?
+              </button>
+            )}
+          </div>
+        </motion.form>
+      </div>
+    </div>
+  );
 }
 
 function OnboardingPage() {
-  const [step, setStep] = useState(0); const [form, setForm] = useState({ restaurant_name: "", location_label: "Main kitchen", city: "", pincode: "" }); const navigate = useNavigate(); const client = useQueryClient();
-  const mutation = useMutation({ mutationFn: () => api.onboard(form), onSuccess: async () => { await client.invalidateQueries({ queryKey: queryKeys.session }); navigate("/dashboard"); } });
-  const fields = [["restaurant_name", "Restaurant name", "e.g. Juniper Kitchen"], ["location_label", "Location label", "e.g. Main kitchen"], ["city", "City", "e.g. Bengaluru"], ["pincode", "Pincode", "Six-digit pincode"]] as const;
-  const current = fields[step]; const valid = form[current[0]].trim().length > 0 && (current[0] !== "pincode" || /^\d{6}$/.test(form.pincode));
-  return <AuthGate onboarding><div className="grid min-h-screen place-items-center bg-canvas p-5"><motion.section {...motionProps} className="w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lift"><div className="bg-forest p-8 text-white"><Link to="/login" className="inline-flex items-center gap-2 text-sm text-emerald-50"><span className="grid h-8 w-8 place-items-center rounded-lg bg-lime-100 font-black text-forest">PA</span>Procurement Assistant</Link><p className="mt-8 text-xs font-bold uppercase tracking-[.18em] text-lime-200">Setup · {step + 1} of 4</p><h1 className="mt-2 text-3xl font-bold">Let’s shape your workspace.</h1><p className="mt-3 max-w-lg text-sm leading-6 text-emerald-50/75">One beta location keeps your inventory and purchasing context consistent. Supplier locations are verified independently.</p></div><form onSubmit={(event) => { event.preventDefault(); if (step < fields.length - 1) setStep(step + 1); else mutation.mutate(); }} className="p-8 sm:p-10"><div className="mb-8 flex gap-2">{fields.map((field, index) => <div key={field[0]} className={cn("h-1.5 flex-1 rounded-full", index <= step ? "bg-moss" : "bg-slate-100")} />)}</div><label className="block text-sm font-bold">{current[1]}<input autoFocus value={form[current[0]]} onChange={(event) => setForm({ ...form, [current[0]]: event.target.value })} className="field mt-2 text-lg" placeholder={current[2]} inputMode={current[0] === "pincode" ? "numeric" : undefined} /></label><p className="mt-3 text-sm text-slate-500">{current[0] === "pincode" ? "We use this for your restaurant context, not to guess a supplier store." : "You can review this fixed beta location in Settings."}</p>{mutation.error && <p className="mt-4 text-sm text-rose-700">{mutation.error.message}</p>}<div className="mt-10 flex justify-between"><button type="button" disabled={step === 0} onClick={() => setStep(step - 1)} className="btn-quiet">Back</button><button disabled={!valid || mutation.isPending} className="btn-primary">{step === fields.length - 1 ? "Create workspace" : "Continue"}</button></div></form></motion.section></div></AuthGate>;
+  const [step, setStep] = useState(0);
+  const [form, setForm] = useState({
+    restaurant_name: "",
+    location_label: "Main kitchen",
+    city: "",
+    pincode: "",
+  });
+  const navigate = useNavigate();
+  const client = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => api.onboard(form),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: queryKeys.session });
+      navigate("/dashboard");
+    },
+  });
+  const fields = [
+    ["restaurant_name", "Restaurant name", "e.g. Juniper Kitchen"],
+    ["location_label", "Location label", "e.g. Main kitchen"],
+    ["city", "City", "e.g. Bengaluru"],
+    ["pincode", "Pincode", "Six-digit pincode"],
+  ] as const;
+  const current = fields[step];
+  const valid =
+    form[current[0]].trim().length > 0 &&
+    (current[0] !== "pincode" || /^\d{6}$/.test(form.pincode));
+  return (
+    <AuthGate onboarding>
+      <div className="grid min-h-screen place-items-center bg-canvas p-5">
+        <motion.section
+          {...motionProps}
+          className="w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lift"
+        >
+          <div className="bg-forest p-8 text-white">
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-2 text-sm text-emerald-50"
+            >
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-lime-100 font-black text-forest">
+                PA
+              </span>
+              Procurement Assistant
+            </Link>
+            <p className="mt-8 text-xs font-bold uppercase tracking-[.18em] text-lime-200">
+              Setup · {step + 1} of 4
+            </p>
+            <h1 className="mt-2 text-3xl font-bold">
+              Let’s shape your workspace.
+            </h1>
+            <p className="mt-3 max-w-lg text-sm leading-6 text-emerald-50/75">
+              One beta location keeps your inventory and purchasing context
+              consistent. Supplier locations are verified independently.
+            </p>
+          </div>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (step < fields.length - 1) setStep(step + 1);
+              else mutation.mutate();
+            }}
+            className="p-8 sm:p-10"
+          >
+            <div className="mb-8 flex gap-2">
+              {fields.map((field, index) => (
+                <div
+                  key={field[0]}
+                  className={cn(
+                    "h-1.5 flex-1 rounded-full",
+                    index <= step ? "bg-moss" : "bg-slate-100",
+                  )}
+                />
+              ))}
+            </div>
+            <label className="block text-sm font-bold">
+              {current[1]}
+              <input
+                autoFocus
+                value={form[current[0]]}
+                onChange={(event) =>
+                  setForm({ ...form, [current[0]]: event.target.value })
+                }
+                className="field mt-2 text-lg"
+                placeholder={current[2]}
+                inputMode={current[0] === "pincode" ? "numeric" : undefined}
+              />
+            </label>
+            <p className="mt-3 text-sm text-slate-500">
+              {current[0] === "pincode"
+                ? "We use this for your restaurant context, not to guess a supplier store."
+                : "You can review this fixed beta location in Settings."}
+            </p>
+            {mutation.error && (
+              <p className="mt-4 text-sm text-rose-700">
+                {mutation.error.message}
+              </p>
+            )}
+            <div className="mt-10 flex justify-between">
+              <button
+                type="button"
+                disabled={step === 0}
+                onClick={() => setStep(step - 1)}
+                className="btn-quiet"
+              >
+                Back
+              </button>
+              <button
+                disabled={!valid || mutation.isPending}
+                className="btn-primary"
+              >
+                {step === fields.length - 1 ? "Create workspace" : "Continue"}
+              </button>
+            </div>
+          </form>
+        </motion.section>
+      </div>
+    </AuthGate>
+  );
 }
 
-function Metric({ label, value, detail, icon: Icon }: { label: string; value: string; detail: string; icon: LucideIcon }) { return <motion.article {...motionProps} className="surface group p-5"><div className="flex items-start justify-between"><div><p className="text-sm font-medium text-slate-500">{label}</p><strong className="mt-3 block text-3xl font-bold tracking-tight">{value}</strong></div><span className="rounded-xl bg-emerald-50 p-2.5 text-moss transition group-hover:-translate-y-0.5"><Icon size={19}/></span></div><p className="mt-4 text-xs text-slate-500">{detail}</p></motion.article>; }
+function Metric({
+  label,
+  value,
+  detail,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon: LucideIcon;
+}) {
+  return (
+    <motion.article {...motionProps} className="surface group p-5">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm font-medium text-slate-500">{label}</p>
+          <strong className="mt-3 block text-3xl font-bold tracking-tight">
+            {value}
+          </strong>
+        </div>
+        <span className="rounded-xl bg-emerald-50 p-2.5 text-moss transition group-hover:-translate-y-0.5">
+          <Icon size={19} />
+        </span>
+      </div>
+      <p className="mt-4 text-xs text-slate-500">{detail}</p>
+    </motion.article>
+  );
+}
 
 function DashboardPage() {
-  const [analytics, purchases, inventory, runs] = useQueries({ queries: [{ queryKey: queryKeys.analytics, queryFn: api.analytics }, { queryKey: queryKeys.purchases, queryFn: api.purchases }, { queryKey: queryKeys.inventory, queryFn: api.inventory }, { queryKey: queryKeys.runs, queryFn: api.runs }] });
-  if ([analytics, purchases, inventory, runs].some((item) => item.isError)) return <ErrorState error={[analytics, purchases, inventory, runs].find((item) => item.error)?.error} />;
-  if ([analytics, purchases, inventory, runs].some((item) => item.isPending)) return <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 8 }, (_, index) => <Skeleton key={index} className="h-44" />)}</div>;
-  const data = analytics.data!; const runRows = runs.data!.items; const supplierCoverage = new Set(runRows.map((run) => run.supplier)).size;
-  return <div className="space-y-7"><section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><span className="eyebrow">Good to see you</span><h2 className="mt-2 text-4xl font-bold tracking-tight">Keep purchasing <em className="font-serif font-normal text-moss">intentional.</em></h2><p className="mt-2 text-sm text-slate-500">Your procurement, inventory, and supplier data in one focused view.</p></div><Link className="btn-primary" to="/compare"><Search size={17}/>Compare a product</Link></section><section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"><Metric label="Spend this month" value={money(data.current_month_spend)} detail="Recorded purchase value" icon={ReceiptText}/><Metric label="Purchases" value={String(purchases.data!.items.length)} detail="Recent procurement records" icon={PackageCheck}/><Metric label="Inventory items" value={String(inventory.data!.items.length)} detail="Tracked at this location" icon={Box}/><Metric label="Supplier coverage" value={String(supplierCoverage)} detail="Suppliers with scrape activity" icon={ShieldCheck}/></section><section className="grid gap-5 xl:grid-cols-[1.45fr_.85fr]"><article className="surface min-h-80 p-6"><div className="mb-6 flex items-center justify-between"><div><h3 className="text-lg font-bold">Spend momentum</h3><p className="text-sm text-slate-500">Actual recorded procurement spend</p></div><span className="pill">This period</span></div>{data.over_time.length ? <ResponsiveContainer width="100%" height={230}><AreaChart data={data.over_time}><defs><linearGradient id="spend" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#2f6a4f" stopOpacity={.3}/><stop offset="100%" stopColor="#2f6a4f" stopOpacity={0}/></linearGradient></defs><CartesianGrid vertical={false} stroke="#e8ece7"/><XAxis dataKey="date" tickFormatter={shortDate} axisLine={false} tickLine={false}/><YAxis hide/><Tooltip formatter={(value: number) => money(value)} labelFormatter={shortDate}/><Area type="monotone" dataKey="amount" stroke="#2f6a4f" strokeWidth={3} fill="url(#spend)" /></AreaChart></ResponsiveContainer> : <Empty icon={ChartNoAxesCombined} title="No spend trend yet" body="Record a purchase from a comparison to start building your financial view."/>}</article><article className="surface p-6"><h3 className="text-lg font-bold">Supplier freshness</h3><p className="mt-1 text-sm text-slate-500">Latest worker activity</p><div className="mt-5 space-y-3">{runRows.slice(0, 5).map((run) => <div key={run.id} className="rounded-xl border border-slate-100 p-3"><div className="flex justify-between gap-3 text-sm font-semibold"><span>{run.supplier}</span><Status status={run.status}/></div><p className="mt-1 truncate text-xs text-slate-500">{run.supplier_location} · {run.observed_count} products</p><p className="mt-1 text-xs text-slate-400">{dateTime(run.finished_at)}</p></div>)}{!runRows.length && <Empty icon={ClipboardList} title="No scraper runs" body="Supplier freshness will appear after a completed run."/>}</div></article></section><section className="grid gap-5 lg:grid-cols-2"><article className="surface p-6"><div className="flex items-center justify-between"><h3 className="text-lg font-bold">Recent purchases</h3><Link className="text-sm font-semibold text-moss" to="/purchases">View all</Link></div><div className="mt-4 divide-y divide-slate-100">{data.recent_purchases.slice(0, 5).map((purchase) => <div key={purchase.id} className="flex items-center justify-between py-3"><div><p className="text-sm font-semibold">{purchase.supplier}</p><p className="text-xs text-slate-500">{shortDate(purchase.purchased_at)}</p></div><strong>{money(purchase.total_amount)}</strong></div>)}{!data.recent_purchases.length && <Empty icon={ReceiptText} title="Nothing recorded" body="Purchases appear here once your team records them."/>}</div></article><article className="surface p-6"><h3 className="text-lg font-bold">Fast actions</h3><p className="mt-1 text-sm text-slate-500">Keep operations moving without losing context.</p><div className="mt-5 grid gap-3 sm:grid-cols-2"><Quick to="/compare" icon={Search} title="Compare pricing" text="Source a product"/><Quick to="/inventory" icon={Box} title="Adjust inventory" text="Record kitchen usage"/><Quick to="/spending" icon={TrendingUp} title="Review spend" text="See purchasing trends"/><Quick to="/settings" icon={MapPin} title="Location context" text="View beta location"/></div></article></section></div>;
+  const [analytics, purchases, inventory, runs] = useQueries({
+    queries: [
+      { queryKey: queryKeys.analytics, queryFn: api.analytics },
+      { queryKey: queryKeys.purchases, queryFn: api.purchases },
+      { queryKey: queryKeys.inventory, queryFn: api.inventory },
+      { queryKey: queryKeys.runs, queryFn: api.runs },
+    ],
+  });
+  if ([analytics, purchases, inventory, runs].some((item) => item.isError))
+    return (
+      <ErrorState
+        error={
+          [analytics, purchases, inventory, runs].find((item) => item.error)
+            ?.error
+        }
+      />
+    );
+  if ([analytics, purchases, inventory, runs].some((item) => item.isPending))
+    return (
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 8 }, (_, index) => (
+          <Skeleton key={index} className="h-44" />
+        ))}
+      </div>
+    );
+  const data = analytics.data!;
+  const runRows = runs.data!.items;
+  const supplierCoverage = new Set(runRows.map((run) => run.supplier)).size;
+  return (
+    <div className="space-y-7">
+      <section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+        <div>
+          <span className="eyebrow">Good to see you</span>
+          <h2 className="mt-2 text-4xl font-bold tracking-tight">
+            Keep purchasing{" "}
+            <em className="font-serif font-normal text-moss">intentional.</em>
+          </h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Your procurement, inventory, and supplier data in one focused view.
+          </p>
+        </div>
+        <Link className="btn-primary" to="/compare">
+          <Search size={17} />
+          Compare a product
+        </Link>
+      </section>
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Metric
+          label="Spend this month"
+          value={money(data.current_month_spend)}
+          detail="Recorded purchase value"
+          icon={ReceiptText}
+        />
+        <Metric
+          label="Purchases"
+          value={String(purchases.data!.items.length)}
+          detail="Recent procurement records"
+          icon={PackageCheck}
+        />
+        <Metric
+          label="Inventory items"
+          value={String(inventory.data!.items.length)}
+          detail="Tracked at this location"
+          icon={Box}
+        />
+        <Metric
+          label="Supplier coverage"
+          value={String(supplierCoverage)}
+          detail="Suppliers with scrape activity"
+          icon={ShieldCheck}
+        />
+      </section>
+      <section className="grid gap-5 xl:grid-cols-[1.45fr_.85fr]">
+        <article className="surface min-h-80 p-6">
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-bold">Spend momentum</h3>
+              <p className="text-sm text-slate-500">
+                Actual recorded procurement spend
+              </p>
+            </div>
+            <span className="pill">This period</span>
+          </div>
+          {data.over_time.length ? (
+            <ResponsiveContainer width="100%" height={230}>
+              <AreaChart data={data.over_time}>
+                <defs>
+                  <linearGradient id="spend" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stopColor="#2f6a4f" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#2f6a4f" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid vertical={false} stroke="#e8ece7" />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={shortDate}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis hide />
+                <Tooltip
+                  formatter={(value: number) => money(value)}
+                  labelFormatter={shortDate}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="amount"
+                  stroke="#2f6a4f"
+                  strokeWidth={3}
+                  fill="url(#spend)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty
+              icon={ChartNoAxesCombined}
+              title="No spend trend yet"
+              body="Record a purchase from a comparison to start building your financial view."
+            />
+          )}
+        </article>
+        <article className="surface p-6">
+          <h3 className="text-lg font-bold">Supplier freshness</h3>
+          <p className="mt-1 text-sm text-slate-500">Latest worker activity</p>
+          <div className="mt-5 space-y-3">
+            {runRows.slice(0, 5).map((run) => (
+              <div
+                key={run.id}
+                className="rounded-xl border border-slate-100 p-3"
+              >
+                <div className="flex justify-between gap-3 text-sm font-semibold">
+                  <span>{run.supplier}</span>
+                  <Status status={run.status} />
+                </div>
+                <p className="mt-1 truncate text-xs text-slate-500">
+                  {run.supplier_location} · {run.observed_count} products
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {dateTime(run.finished_at)}
+                </p>
+              </div>
+            ))}
+            {!runRows.length && (
+              <Empty
+                icon={ClipboardList}
+                title="No scraper runs"
+                body="Supplier freshness will appear after a completed run."
+              />
+            )}
+          </div>
+        </article>
+      </section>
+      <section className="grid gap-5 lg:grid-cols-2">
+        <ChartCard
+          title="Supplier spend"
+          data={data.by_supplier}
+          keyName="supplier"
+        />
+        <ChartCard
+          title="Category spend"
+          data={data.by_category}
+          keyName="category"
+        />
+      </section>
+      <section className="grid gap-5 lg:grid-cols-2">
+        <article className="surface p-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold">Recent purchases</h3>
+            <Link className="text-sm font-semibold text-moss" to="/purchases">
+              View all
+            </Link>
+          </div>
+          <div className="mt-4 divide-y divide-slate-100">
+            {data.recent_purchases.slice(0, 5).map((purchase) => (
+              <div
+                key={purchase.id}
+                className="flex items-center justify-between py-3"
+              >
+                <div>
+                  <p className="text-sm font-semibold">{purchase.supplier}</p>
+                  <p className="text-xs text-slate-500">
+                    {shortDate(purchase.purchased_at)}
+                  </p>
+                </div>
+                <strong>{money(purchase.total_amount)}</strong>
+              </div>
+            ))}
+            {!data.recent_purchases.length && (
+              <Empty
+                icon={ReceiptText}
+                title="Nothing recorded"
+                body="Purchases appear here once your team records them."
+              />
+            )}
+          </div>
+        </article>
+        <article className="surface p-6">
+          <h3 className="text-lg font-bold">Fast actions</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Keep operations moving without losing context.
+          </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <Quick
+              to="/compare"
+              icon={Search}
+              title="Compare pricing"
+              text="Source a product"
+            />
+            <Quick
+              to="/inventory"
+              icon={Box}
+              title="Adjust inventory"
+              text="Record kitchen usage"
+            />
+            <Quick
+              to="/spending"
+              icon={TrendingUp}
+              title="Review spend"
+              text="See purchasing trends"
+            />
+            <Quick
+              to="/settings"
+              icon={MapPin}
+              title="Location context"
+              text="View beta location"
+            />
+          </div>
+        </article>
+      </section>
+    </div>
+  );
 }
 
-function Status({ status }: { status: string }) { const success = status === "complete"; return <span className={cn("rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide", success ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>{status.replaceAll("_", " ")}</span>; }
-function Quick({ to, icon: Icon, title, text }: { to: string; icon: LucideIcon; title: string; text: string }) { return <Link to={to} className="group rounded-2xl border border-slate-200 p-4 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-lift"><Icon className="text-moss" size={20}/><p className="mt-5 text-sm font-bold">{title}</p><p className="mt-1 text-xs text-slate-500">{text}</p></Link>; }
-function Empty({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body: string }) { return <div className="grid min-h-32 place-items-center text-center"><div><Icon className="mx-auto text-slate-300" size={25}/><p className="mt-2 text-sm font-semibold">{title}</p><p className="mt-1 max-w-xs text-xs leading-5 text-slate-500">{body}</p></div></div>; }
+function Status({ status }: { status: string }) {
+  const success = status === "complete";
+  return (
+    <span
+      className={cn(
+        "rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide",
+        success
+          ? "bg-emerald-50 text-emerald-700"
+          : "bg-amber-50 text-amber-700",
+      )}
+    >
+      {status.replaceAll("_", " ")}
+    </span>
+  );
+}
+function Quick({
+  to,
+  icon: Icon,
+  title,
+  text,
+}: {
+  to: string;
+  icon: LucideIcon;
+  title: string;
+  text: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className="group rounded-2xl border border-slate-200 p-4 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-lift"
+    >
+      <Icon className="text-moss" size={20} />
+      <p className="mt-5 text-sm font-bold">{title}</p>
+      <p className="mt-1 text-xs text-slate-500">{text}</p>
+    </Link>
+  );
+}
+function Empty({
+  icon: Icon,
+  title,
+  body,
+}: {
+  icon: LucideIcon;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="grid min-h-32 place-items-center text-center">
+      <div>
+        <Icon className="mx-auto text-slate-300" size={25} />
+        <p className="mt-2 text-sm font-semibold">{title}</p>
+        <p className="mt-1 max-w-xs text-xs leading-5 text-slate-500">{body}</p>
+      </div>
+    </div>
+  );
+}
 
 function ComparePage() {
-  const [term, setTerm] = useState(""); const [selected, setSelected] = useState<Product | null>(null); const [quantity, setQuantity] = useState("1"); const [unit, setUnit] = useState("kg"); const [sort, setSort] = useState("total"); const [available, setAvailable] = useState(false); const [purchase, setPurchase] = useState<Offer | null>(null);
-  const search = useQuery({ queryKey: ["product-search", term], queryFn: () => api.search(term), enabled: term.trim().length >= 2 });
-  const comparison = useQuery({ queryKey: ["comparison", selected?.id, quantity, unit], queryFn: () => api.compare(selected!.id, Number(quantity), unit), enabled: false });
-  const history = useQuery({ queryKey: ["history", selected?.id], queryFn: () => api.history(selected!.id), enabled: Boolean(selected && comparison.data) });
-  const offers = useMemo(() => { const items = comparison.data?.offers ?? []; return items.filter((offer) => !available || offer.availability).sort((a, b) => sort === "unit" ? a.normalized_unit_price - b.normalized_unit_price : sort === "fresh" ? String(b.last_checked).localeCompare(String(a.last_checked)) : a.total_cost - b.total_cost); }, [comparison.data, available, sort]);
-  return <div className="space-y-6"><section className="relative overflow-hidden rounded-3xl bg-forest p-7 text-white md:p-10"><div className="relative z-10 max-w-2xl"><span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-emerald-50"><Sparkles size={13}/>Quantity-aware sourcing</span><h2 className="mt-5 text-4xl font-bold tracking-tight">Find the purchase that <span className="text-lime-200">fits the kitchen.</span></h2><p className="mt-3 text-sm leading-6 text-emerald-50/75">Compare pack economics, current availability, and data quality before you commit a purchase.</p></div><div className="absolute -right-12 -top-14 h-64 w-64 rounded-full bg-lime-200/10 blur-3xl" /></section><section className="surface relative z-10 -mt-10 mx-3 p-5 shadow-lift md:mx-8 md:p-6"><div className="grid gap-4 lg:grid-cols-[2fr_.7fr_.7fr_auto]"><label className="relative text-sm font-semibold">Product<input className="field mt-1.5" value={term} onChange={(event) => { setTerm(event.target.value); setSelected(null); }} placeholder="Search rice, tomato, sunflower oil…" />{search.isPending && <LoaderCircle className="absolute right-3 top-10 animate-spin text-moss" size={17}/>}<AnimatePresence>{search.data && !selected && <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="absolute z-20 mt-2 max-h-72 w-full overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lift">{search.data.items.map((product) => <button key={product.id} onClick={() => { setSelected(product); setTerm(product.display_name); }} className="block w-full rounded-lg px-3 py-3 text-left hover:bg-emerald-50"><strong className="block text-sm">{product.display_name}</strong><span className="text-xs text-slate-500">{[product.brand, product.category].filter(Boolean).join(" · ")}</span></button>)}{!search.data.items.length && <p className="p-3 text-sm text-slate-500">No matching canonical product.</p>}</motion.div>}</AnimatePresence></label><label className="text-sm font-semibold">Quantity<input className="field mt-1.5" type="number" min="0.001" step="0.001" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label><label className="text-sm font-semibold">Unit<select className="field mt-1.5" value={unit} onChange={(event) => setUnit(event.target.value)}><option value="kg">kg</option><option value="l">litre</option><option value="piece">piece</option></select></label><button disabled={!selected || !Number(quantity) || comparison.isFetching} onClick={() => comparison.refetch()} className="btn-primary h-11 self-end">{comparison.isFetching ? <LoaderCircle className="animate-spin" size={17}/> : <Search size={17}/>}Compare</button></div>{selected && <div className="mt-4 flex items-center gap-2 text-sm text-moss"><Check size={16}/>Selected: <strong>{selected.display_name}</strong></div>}</section>{comparison.error && <ErrorState error={comparison.error}/>} {comparison.data && <><section className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-xl font-bold">Supplier options <span className="text-slate-400">({offers.length})</span></h3><p className="mt-1 text-sm text-slate-500">Ranked by total procurement cost for {quantity} {comparison.data.base_unit}.</p></div><div className="flex items-center gap-2"><label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={available} onChange={(event) => setAvailable(event.target.checked)} />Available only</label><select className="field w-40 py-2" value={sort} onChange={(event) => setSort(event.target.value)}><option value="total">Best total</option><option value="unit">Best unit price</option><option value="fresh">Freshest data</option></select></div></section><section className="grid gap-4 xl:grid-cols-3">{offers.map((offer, index) => <OfferCard key={offer.id} offer={offer} rank={index + 1} bestTotal={offer.id === comparison.data!.best_total_cost_offer_id} bestUnit={offer.id === comparison.data!.best_unit_price_offer_id} onPurchase={() => setPurchase(offer)} />)}{!offers.length && <div className="surface col-span-full"><Empty icon={PackageCheck} title="No compatible offers" body="Try another unit or review product matching and supplier availability."/></div>}</section><HistoryPanel data={history.data} loading={history.isPending}/></>}{purchase && selected && comparison.data && <PurchaseDialog offer={purchase} product={selected} unit={comparison.data.base_unit} onClose={() => setPurchase(null)} />}</div>;
+  const [term, setTerm] = useState("");
+  const [selected, setSelected] = useState<Product | null>(null);
+  const [quantity, setQuantity] = useState("1");
+  const [unit, setUnit] = useState("kg");
+  const [sort, setSort] = useState("total");
+  const [available, setAvailable] = useState(false);
+  const [purchase, setPurchase] = useState<Offer | null>(null);
+  const search = useQuery({
+    queryKey: ["product-search", term],
+    queryFn: () => api.search(term),
+    enabled: term.trim().length >= 2,
+  });
+  const comparison = useQuery({
+    queryKey: ["comparison", selected?.id, quantity, unit],
+    queryFn: () => api.compare(selected!.id, Number(quantity), unit),
+    enabled: false,
+  });
+  const history = useQuery({
+    queryKey: ["history", selected?.id],
+    queryFn: () => api.history(selected!.id),
+    enabled: Boolean(selected && comparison.data),
+  });
+  const offers = useMemo(() => {
+    const items = comparison.data?.offers ?? [];
+    return items
+      .filter((offer) => !available || offer.availability)
+      .sort((a, b) =>
+        sort === "unit"
+          ? a.normalized_unit_price - b.normalized_unit_price
+          : sort === "fresh"
+            ? String(b.last_checked).localeCompare(String(a.last_checked))
+            : a.total_cost - b.total_cost,
+      );
+  }, [comparison.data, available, sort]);
+  return (
+    <div className="space-y-6">
+      <section className="relative overflow-hidden rounded-3xl bg-forest p-7 text-white md:p-10">
+        <div className="relative z-10 max-w-2xl">
+          <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-emerald-50">
+            <Sparkles size={13} />
+            Quantity-aware sourcing
+          </span>
+          <h2 className="mt-5 text-4xl font-bold tracking-tight">
+            Find the purchase that{" "}
+            <span className="text-lime-200">fits the kitchen.</span>
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-emerald-50/75">
+            Compare pack economics, current availability, and data quality
+            before you commit a purchase.
+          </p>
+        </div>
+        <div className="absolute -right-12 -top-14 h-64 w-64 rounded-full bg-lime-200/10 blur-3xl" />
+      </section>
+      <section className="surface relative z-10 -mt-10 mx-3 p-5 shadow-lift md:mx-8 md:p-6">
+        <div className="grid gap-4 lg:grid-cols-[2fr_.7fr_.7fr_auto]">
+          <label className="relative text-sm font-semibold">
+            Product
+            <input
+              className="field mt-1.5"
+              value={term}
+              onChange={(event) => {
+                setTerm(event.target.value);
+                setSelected(null);
+              }}
+              placeholder="Search rice, tomato, sunflower oil…"
+            />
+            {search.isPending && (
+              <LoaderCircle
+                className="absolute right-3 top-10 animate-spin text-moss"
+                size={17}
+              />
+            )}
+            <AnimatePresence>
+              {search.data && !selected && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="absolute z-20 mt-2 max-h-72 w-full overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lift"
+                >
+                  {search.data.items.map((product) => (
+                    <button
+                      key={product.id}
+                      onClick={() => {
+                        setSelected(product);
+                        setTerm(product.display_name);
+                      }}
+                      className="block w-full rounded-lg px-3 py-3 text-left hover:bg-emerald-50"
+                    >
+                      <strong className="block text-sm">
+                        {product.display_name}
+                      </strong>
+                      <span className="text-xs text-slate-500">
+                        {[product.brand, product.category]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </button>
+                  ))}
+                  {!search.data.items.length && (
+                    <p className="p-3 text-sm text-slate-500">
+                      No matching canonical product.
+                    </p>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </label>
+          <label className="text-sm font-semibold">
+            Quantity
+            <input
+              className="field mt-1.5"
+              type="number"
+              min="0.001"
+              step="0.001"
+              value={quantity}
+              onChange={(event) => setQuantity(event.target.value)}
+            />
+          </label>
+          <label className="text-sm font-semibold">
+            Unit
+            <select
+              className="field mt-1.5"
+              value={unit}
+              onChange={(event) => setUnit(event.target.value)}
+            >
+              <option value="kg">kg</option>
+              <option value="l">litre</option>
+              <option value="piece">piece</option>
+            </select>
+          </label>
+          <button
+            disabled={!selected || !Number(quantity) || comparison.isFetching}
+            onClick={() => comparison.refetch()}
+            className="btn-primary h-11 self-end"
+          >
+            {comparison.isFetching ? (
+              <LoaderCircle className="animate-spin" size={17} />
+            ) : (
+              <Search size={17} />
+            )}
+            Compare
+          </button>
+        </div>
+        {selected && (
+          <div className="mt-4 flex items-center gap-2 text-sm text-moss">
+            <Check size={16} />
+            Selected: <strong>{selected.display_name}</strong>
+          </div>
+        )}
+      </section>
+      {comparison.error && <ErrorState error={comparison.error} />}{" "}
+      {comparison.data && (
+        <>
+          <section className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-bold">
+                Supplier options{" "}
+                <span className="text-slate-400">({offers.length})</span>
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Ranked by total procurement cost for {quantity}{" "}
+                {comparison.data.base_unit}.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={available}
+                  onChange={(event) => setAvailable(event.target.checked)}
+                />
+                Available only
+              </label>
+              <select
+                className="field w-40 py-2"
+                value={sort}
+                onChange={(event) => setSort(event.target.value)}
+              >
+                <option value="total">Best total</option>
+                <option value="unit">Best unit price</option>
+                <option value="fresh">Freshest data</option>
+              </select>
+            </div>
+          </section>
+          <section className="grid gap-4 xl:grid-cols-3">
+            {offers.map((offer, index) => (
+              <OfferCard
+                key={offer.id}
+                offer={offer}
+                rank={index + 1}
+                bestTotal={
+                  offer.id === comparison.data!.best_total_cost_offer_id
+                }
+                bestUnit={
+                  offer.id === comparison.data!.best_unit_price_offer_id
+                }
+                onPurchase={() => setPurchase(offer)}
+              />
+            ))}
+            {!offers.length && (
+              <div className="surface col-span-full">
+                <Empty
+                  icon={PackageCheck}
+                  title="No compatible offers"
+                  body="Try another unit or review product matching and supplier availability."
+                />
+              </div>
+            )}
+          </section>
+          <HistoryPanel data={history.data} loading={history.isPending} />
+        </>
+      )}
+      {purchase && selected && comparison.data && (
+        <PurchaseDialog
+          offer={purchase}
+          product={selected}
+          unit={comparison.data.base_unit}
+          onClose={() => setPurchase(null)}
+        />
+      )}
+    </div>
+  );
 }
 
-function OfferCard({ offer, rank, bestTotal, bestUnit, onPurchase }: { offer: Offer; rank: number; bestTotal: boolean; bestUnit: boolean; onPurchase: () => void }) { const fallback = /fallback|unverified/i.test(offer.supplier_location); return <motion.article {...motionProps} transition={{ delay: rank * .04 }} className={cn("surface relative overflow-hidden p-5", bestTotal && "border-emerald-300 ring-1 ring-emerald-200")}><div className="flex items-start justify-between gap-3"><div><div className="flex flex-wrap gap-2">{bestTotal && <span className="pill bg-emerald-100 text-emerald-800">Best purchase</span>}{bestUnit && <span className="pill bg-amber-100 text-amber-800">Best unit price</span>}</div><h4 className="mt-3 text-lg font-bold">{offer.supplier}</h4><p className="mt-1 text-xs text-slate-500">{offer.pack || "Pack not available"}</p></div><span className="grid h-8 w-8 place-items-center rounded-lg bg-slate-100 text-xs font-bold text-slate-500">#{rank}</span></div><div className="mt-5"><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total purchase cost</p><strong className="mt-1 block text-3xl tracking-tight">{money(offer.total_cost)}</strong><p className="mt-1 text-sm text-slate-500">{money(offer.normalized_unit_price)} / {offer.base_unit}</p></div><div className="mt-5 grid grid-cols-2 gap-3 border-y border-slate-100 py-4 text-sm"><Stat label="Packs" value={String(offer.packs_required)}/><Stat label="Quantity" value={`${offer.quantity_purchased} ${offer.base_unit}`}/><Stat label="Excess" value={`${offer.excess_quantity} ${offer.base_unit}`}/><Stat label="Availability" value={offer.availability ? "Available" : "Check listing"}/></div><div className="mt-4 flex flex-wrap gap-2"><span className={cn("pill", offer.stale ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800")}>{offer.stale ? "Stale data" : "Current data"}</span>{fallback && <span title="Lots fallback store 101 is not a pincode-specific or verified supplier location." className="pill bg-amber-50 text-amber-800"><CircleAlert size={12}/>Unverified fallback</span>}</div><p className="mt-3 text-xs text-slate-500">{offer.supplier_location} · checked {dateTime(offer.last_checked)}</p><div className="mt-5 flex gap-2"><a className="btn-secondary flex-1" href={offer.product_url || "#"} target="_blank" rel="noreferrer">Supplier listing</a><button className="btn-primary flex-1" onClick={onPurchase}>Record purchase</button></div></motion.article>; }
-function Stat({ label, value }: { label: string; value: string }) { return <div><p className="text-xs text-slate-400">{label}</p><p className="mt-1 font-semibold">{value}</p></div>; }
+function OfferCard({
+  offer,
+  rank,
+  bestTotal,
+  bestUnit,
+  onPurchase,
+}: {
+  offer: Offer;
+  rank: number;
+  bestTotal: boolean;
+  bestUnit: boolean;
+  onPurchase: () => void;
+}) {
+  const fallback = /fallback|unverified/i.test(offer.supplier_location);
+  return (
+    <motion.article
+      {...motionProps}
+      transition={{ delay: rank * 0.04 }}
+      className={cn(
+        "surface relative overflow-hidden p-5",
+        bestTotal && "border-emerald-300 ring-1 ring-emerald-200",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap gap-2">
+            {bestTotal && (
+              <span className="pill bg-emerald-100 text-emerald-800">
+                Best purchase
+              </span>
+            )}
+            {bestUnit && (
+              <span className="pill bg-amber-100 text-amber-800">
+                Best unit price
+              </span>
+            )}
+          </div>
+          <h4 className="mt-3 text-lg font-bold">{offer.supplier}</h4>
+          <p className="mt-1 text-xs text-slate-500">
+            {offer.pack || "Pack not available"}
+          </p>
+        </div>
+        <span className="grid h-8 w-8 place-items-center rounded-lg bg-slate-100 text-xs font-bold text-slate-500">
+          #{rank}
+        </span>
+      </div>
+      <div className="mt-5">
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+          Total purchase cost
+        </p>
+        <strong className="mt-1 block text-3xl tracking-tight">
+          {money(offer.total_cost)}
+        </strong>
+        <p className="mt-1 text-sm text-slate-500">
+          {money(offer.normalized_unit_price)} / {offer.base_unit}
+        </p>
+      </div>
+      <div className="mt-5 grid grid-cols-2 gap-3 border-y border-slate-100 py-4 text-sm">
+        <Stat label="Packs" value={String(offer.packs_required)} />
+        <Stat
+          label="Quantity"
+          value={`${offer.quantity_purchased} ${offer.base_unit}`}
+        />
+        <Stat
+          label="Excess"
+          value={`${offer.excess_quantity} ${offer.base_unit}`}
+        />
+        <Stat
+          label="Availability"
+          value={offer.availability ? "Available" : "Check listing"}
+        />
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <span
+          className={cn(
+            "pill",
+            offer.stale
+              ? "bg-amber-50 text-amber-800"
+              : "bg-emerald-50 text-emerald-800",
+          )}
+        >
+          {offer.stale ? "Stale data" : "Current data"}
+        </span>
+        {fallback && (
+          <span
+            title="Lots fallback store 101 is not a pincode-specific or verified supplier location."
+            className="pill bg-amber-50 text-amber-800"
+          >
+            <CircleAlert size={12} />
+            Unverified fallback
+          </span>
+        )}
+      </div>
+      <p className="mt-3 text-xs text-slate-500">
+        {offer.supplier_location} · checked {dateTime(offer.last_checked)}
+      </p>
+      <div className="mt-5 flex gap-2">
+        {offer.product_url ? (
+          <a
+            className="btn-secondary flex-1"
+            href={offer.product_url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Supplier listing <ExternalLink size={14} />
+          </a>
+        ) : (
+          <span
+            className="btn-secondary flex-1 cursor-not-allowed opacity-50"
+            title="This supplier offer does not include a product listing URL."
+            aria-disabled="true"
+          >
+            Listing unavailable
+          </span>
+        )}
+        <button className="btn-primary flex-1" onClick={onPurchase}>
+          Record purchase
+        </button>
+      </div>
+    </motion.article>
+  );
+}
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-slate-400">{label}</p>
+      <p className="mt-1 font-semibold">{value}</p>
+    </div>
+  );
+}
 
-function HistoryPanel({ data, loading }: { data?: History; loading: boolean }) { const chart = data?.observations.filter((point) => point.price != null).map((point) => ({ ...point, date: shortDate(point.observed_at), series: `${point.supplier} · ${point.supplier_location}` })) ?? []; return <section className="surface p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div><span className="eyebrow">Price history</span><h3 className="mt-1 text-xl font-bold">See the movement behind today’s price.</h3><p className="mt-1 text-sm text-slate-500">Only observed supplier data is plotted; incomplete and legacy samples stay marked in the data.</p></div>{data && <div className="rounded-xl bg-emerald-50 px-4 py-3 text-right"><p className="text-xs text-emerald-800">Current observed price</p><strong className="text-xl text-emerald-950">{money(data.current_price)}</strong></div>}</div>{loading ? <Skeleton className="mt-6 h-64" /> : chart.length ? <ResponsiveContainer width="100%" height={280}><AreaChart data={chart}><CartesianGrid vertical={false} stroke="#edf0ec"/><XAxis dataKey="date" axisLine={false} tickLine={false}/><YAxis tickFormatter={(value) => `₹${value}`} axisLine={false} tickLine={false}/><Tooltip formatter={(value: number) => money(value)} labelFormatter={(label) => label}/><Area dataKey="price" type="monotone" stroke="#2f6a4f" fill="#d8e8d9" fillOpacity={.65} strokeWidth={3}/></AreaChart></ResponsiveContainer> : <Empty icon={ChartNoAxesCombined} title="No price history yet" body="Price observations will appear here as supplier data is collected."/>}</section>; }
+function HistoryPanel({ data, loading }: { data?: History; loading: boolean }) {
+  const [range, setRange] = useState<"30" | "90" | "all">("90");
+  const cutoff =
+    range === "all" ? null : Date.now() - Number(range) * 86_400_000;
+  const observations =
+    data?.observations.filter(
+      (point) =>
+        point.price != null &&
+        (!cutoff || new Date(point.observed_at).getTime() >= cutoff),
+    ) ?? [];
+  const series = Array.from(
+    new Set(
+      observations.map(
+        (point) => `${point.supplier} · ${point.supplier_location}`,
+      ),
+    ),
+  );
+  const chart = Array.from(
+    observations
+      .reduce((rows, point) => {
+        const stamp = new Date(point.observed_at).toISOString().slice(0, 10);
+        const row = rows.get(stamp) ?? {
+          date: shortDate(point.observed_at),
+          stamp,
+        };
+        row[`${point.supplier} · ${point.supplier_location}`] = point.price;
+        rows.set(stamp, row);
+        return rows;
+      }, new Map<string, Record<string, string | number | null>>())
+      .values(),
+  ).sort((left, right) =>
+    String(left.stamp).localeCompare(String(right.stamp)),
+  );
+  const colors = ["#2f6a4f", "#c56b2d", "#4968a8", "#8b5aa4", "#197a83"];
+  return (
+    <section className="surface p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <span className="eyebrow">Price history</span>
+          <h3 className="mt-1 text-xl font-bold">
+            See the movement behind today’s price.
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Each supplier location is plotted independently; incomplete and
+            legacy samples remain clearly identifiable in the source data.
+          </p>
+        </div>
+        <div className="flex items-start gap-3">
+          <label className="text-xs font-semibold text-slate-500">
+            Date range
+            <select
+              aria-label="Price history range"
+              className="field mt-1 w-28 py-2 text-sm"
+              value={range}
+              onChange={(event) =>
+                setRange(event.target.value as "30" | "90" | "all")
+              }
+            >
+              <option value="30">30 days</option>
+              <option value="90">90 days</option>
+              <option value="all">All time</option>
+            </select>
+          </label>
+          {data && (
+            <div className="rounded-xl bg-emerald-50 px-4 py-3 text-right">
+              <p className="text-xs text-emerald-800">Current observed price</p>
+              <strong className="text-xl text-emerald-950">
+                {money(data.current_price)}
+              </strong>
+            </div>
+          )}
+        </div>
+      </div>
+      {series.length > 1 && (
+        <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-600">
+          {series.map((name, index) => (
+            <span key={name} className="inline-flex items-center gap-1.5">
+              <i
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: colors[index % colors.length] }}
+              />
+              {name}
+            </span>
+          ))}
+        </div>
+      )}
+      {loading ? (
+        <Skeleton className="mt-6 h-64" />
+      ) : chart.length ? (
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={chart}>
+            <CartesianGrid vertical={false} stroke="#edf0ec" />
+            <XAxis dataKey="date" axisLine={false} tickLine={false} />
+            <YAxis
+              tickFormatter={(value) => `₹${value}`}
+              axisLine={false}
+              tickLine={false}
+            />
+            <Tooltip
+              formatter={(value: number, name: string) => [money(value), name]}
+              labelFormatter={(label) => label}
+            />
+            {data?.current_price != null && (
+              <ReferenceLine
+                y={data.current_price}
+                stroke="#7e9e82"
+                strokeDasharray="4 4"
+                label={{ value: "Current", fill: "#527257", fontSize: 11 }}
+              />
+            )}
+            {series.map((name, index) => (
+              <Line
+                key={name}
+                dataKey={name}
+                type="monotone"
+                stroke={colors[index % colors.length]}
+                strokeWidth={3}
+                dot={{ r: 3 }}
+                connectNulls
+                isAnimationActive
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      ) : (
+        <Empty
+          icon={ChartNoAxesCombined}
+          title="No price history yet"
+          body="Price observations will appear here as supplier data is collected."
+        />
+      )}
+    </section>
+  );
+}
 
-function PurchaseDialog({ offer, product, unit, onClose }: { offer: Offer; product: Product; unit: string; onClose: () => void }) { const [total, setTotal] = useState(String(offer.total_cost)); const [packs, setPacks] = useState(String(offer.packs_required)); const [date, setDate] = useState(new Date().toISOString().slice(0, 10)); const [notes, setNotes] = useState(""); const client = useQueryClient(); const mutation = useMutation({ mutationFn: () => api.createPurchase({ supplier_id: offer.supplier_id, purchased_at: new Date(date).toISOString(), notes: notes || null, items: [{ canonical_product_id: product.id, product_variant_id: offer.product_variant_id, supplier_offer_id: offer.id, supplier_product_url_snapshot: offer.product_url, packs: Number(packs), quantity: offer.quantity_purchased, unit, scraped_price_snapshot: offer.price, actual_unit_price: Number(total) / offer.quantity_purchased, actual_total_price: Number(total) }] }), onSuccess: () => { [queryKeys.analytics, queryKeys.purchases, queryKeys.inventory].forEach((key) => client.invalidateQueries({ queryKey: key })); onClose(); } }); return <Dialog title="Record purchase" onClose={onClose}><p className="text-sm text-slate-500">Record the actual amount paid for <strong>{product.display_name}</strong> from {offer.supplier}.</p><div className="mt-5 rounded-xl bg-slate-50 p-4 text-sm"><div className="flex justify-between"><span>Expected total</span><strong>{money(offer.total_cost)}</strong></div><div className="mt-2 flex justify-between"><span>Effective quantity</span><strong>{offer.quantity_purchased} {unit}</strong></div></div><div className="mt-5 grid gap-4 sm:grid-cols-2"><label className="text-sm font-semibold">Actual paid total<input className="field mt-1.5" type="number" min="0" step="0.01" value={total} onChange={(event) => setTotal(event.target.value)} /></label><label className="text-sm font-semibold">Purchase date<input className="field mt-1.5" type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label><label className="text-sm font-semibold">Packs received<input className="field mt-1.5" type="number" min="1" value={packs} onChange={(event) => setPacks(event.target.value)} /></label><label className="text-sm font-semibold">Notes (optional)<input className="field mt-1.5" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Invoice or delivery note" /></label></div>{mutation.error && <p className="mt-4 text-sm text-rose-700">{mutation.error.message}</p>}<div className="mt-7 flex justify-end gap-3"><button onClick={onClose} className="btn-quiet">Cancel</button><button disabled={mutation.isPending || !offer.product_variant_id || !Number(total) || !Number(packs)} onClick={() => mutation.mutate()} className="btn-primary">{mutation.isPending && <LoaderCircle className="animate-spin" size={16}/>}Save purchase</button></div></Dialog>; }
-function Dialog({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) { const reduced = useReducedMotion(); return <AnimatePresence><motion.div {...(reduced ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })} className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4" onMouseDown={onClose}><motion.div {...(reduced ? {} : motionProps)} className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}><div className="flex items-center justify-between"><h2 className="text-xl font-bold">{title}</h2><button onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100" aria-label="Close"><X size={18}/></button></div>{children}</motion.div></motion.div></AnimatePresence>; }
+function PurchaseDialog({
+  offer,
+  product,
+  unit,
+  onClose,
+}: {
+  offer: Offer;
+  product: Product;
+  unit: string;
+  onClose: () => void;
+}) {
+  const [total, setTotal] = useState(String(offer.total_cost));
+  const [packs, setPacks] = useState(String(offer.packs_required));
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [notes, setNotes] = useState("");
+  const client = useQueryClient();
+  const { notify } = useNotice();
+  const mutation = useMutation({
+    mutationFn: () =>
+      api.createPurchase({
+        supplier_id: offer.supplier_id,
+        purchased_at: new Date(date).toISOString(),
+        notes: notes || null,
+        items: [
+          {
+            canonical_product_id: product.id,
+            product_variant_id: offer.product_variant_id,
+            supplier_offer_id: offer.id,
+            supplier_product_url_snapshot: offer.product_url,
+            packs: Number(packs),
+            quantity: offer.quantity_purchased,
+            unit,
+            scraped_price_snapshot: offer.price,
+            actual_unit_price: Number(total) / offer.quantity_purchased,
+            actual_total_price: Number(total),
+          },
+        ],
+      }),
+    onSuccess: () => {
+      [queryKeys.analytics, queryKeys.purchases, queryKeys.inventory].forEach(
+        (key) => client.invalidateQueries({ queryKey: key }),
+      );
+      notify("Purchase recorded", "Spend and inventory are now up to date.");
+      onClose();
+    },
+  });
+  return (
+    <Dialog title="Record purchase" onClose={onClose}>
+      <p className="text-sm text-slate-500">
+        Record the actual amount paid for{" "}
+        <strong>{product.display_name}</strong> from {offer.supplier}.
+      </p>
+      <div className="mt-5 rounded-xl bg-slate-50 p-4 text-sm">
+        <div className="flex justify-between">
+          <span>Expected total</span>
+          <strong>{money(offer.total_cost)}</strong>
+        </div>
+        <div className="mt-2 flex justify-between">
+          <span>Effective quantity</span>
+          <strong>
+            {offer.quantity_purchased} {unit}
+          </strong>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <label className="text-sm font-semibold">
+          Actual paid total
+          <input
+            className="field mt-1.5"
+            type="number"
+            min="0"
+            step="0.01"
+            value={total}
+            onChange={(event) => setTotal(event.target.value)}
+          />
+        </label>
+        <label className="text-sm font-semibold">
+          Purchase date
+          <input
+            className="field mt-1.5"
+            type="date"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+          />
+        </label>
+        <label className="text-sm font-semibold">
+          Packs received
+          <input
+            className="field mt-1.5"
+            type="number"
+            min="1"
+            value={packs}
+            onChange={(event) => setPacks(event.target.value)}
+          />
+        </label>
+        <label className="text-sm font-semibold">
+          Notes (optional)
+          <input
+            className="field mt-1.5"
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder="Invoice or delivery note"
+          />
+        </label>
+      </div>
+      {mutation.error && (
+        <p className="mt-4 text-sm text-rose-700">{mutation.error.message}</p>
+      )}
+      <div className="mt-7 flex justify-end gap-3">
+        <button onClick={onClose} className="btn-quiet">
+          Cancel
+        </button>
+        <button
+          disabled={
+            mutation.isPending ||
+            !offer.product_variant_id ||
+            !Number(total) ||
+            !Number(packs)
+          }
+          onClick={() => mutation.mutate()}
+          className="btn-primary"
+        >
+          {mutation.isPending && (
+            <LoaderCircle className="animate-spin" size={16} />
+          )}
+          Save purchase
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+function Dialog({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  const reduced = useReducedMotion();
+  return (
+    <AnimatePresence>
+      <motion.div
+        {...(reduced
+          ? {}
+          : {
+              initial: { opacity: 0 },
+              animate: { opacity: 1 },
+              exit: { opacity: 0 },
+            })}
+        className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4"
+        onMouseDown={onClose}
+      >
+        <motion.div
+          {...(reduced ? {} : motionProps)}
+          className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl"
+          onMouseDown={(event) => event.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+        >
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold">{title}</h2>
+            <button
+              onClick={onClose}
+              className="rounded-lg p-2 hover:bg-slate-100"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          {children}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
 
-function InventoryPage() { const [term, setTerm] = useState(""); const [selected, setSelected] = useState<{ id: string; product: string; unit: string } | null>(null); const inventory = useQuery({ queryKey: queryKeys.inventory, queryFn: api.inventory }); const rows = inventory.data?.items.filter((item) => item.product.toLowerCase().includes(term.toLowerCase())) ?? []; return <div className="space-y-6"><section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><span className="eyebrow">Stock position</span><h2 className="mt-2 text-3xl font-bold tracking-tight">Inventory that stays <em className="font-serif font-normal text-moss">accountable.</em></h2></div><div className="relative"><Search className="absolute left-3 top-3 text-slate-400" size={17}/><input className="field w-72 pl-9" value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Search inventory" /></div></section>{inventory.isError ? <ErrorState error={inventory.error}/> : inventory.isPending ? <Skeleton className="h-80"/> : <section className="surface overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-left"><thead className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-400"><tr><th className="p-4">Product</th><th className="p-4">Current quantity</th><th className="p-4">Last updated</th><th className="p-4" /></tr></thead><tbody>{rows.map((item) => <tr key={item.id} className="border-b border-slate-100 last:border-0"><td className="p-4 font-semibold">{item.product}</td><td className="p-4"><strong>{item.quantity}</strong> <span className="text-slate-500">{item.unit}</span></td><td className="p-4 text-sm text-slate-500">{dateTime(item.updated_at)}</td><td className="p-4 text-right"><button onClick={() => setSelected({ id: item.canonical_product_id, product: item.product, unit: item.unit })} className="btn-secondary">Adjust</button></td></tr>)}{!rows.length && <tr><td colSpan={4}><Empty icon={Box} title="No matching inventory" body="Record a purchase or adjust stock to start tracking an item."/></td></tr>}</tbody></table></div></section>}{selected && <InventoryDialog item={selected} onClose={() => setSelected(null)}/>}</div>; }
-function InventoryDialog({ item, onClose }: { item: { id: string; product: string; unit: string }; onClose: () => void }) { const [delta, setDelta] = useState("1"); const [kind, setKind] = useState("manual_add"); const [note, setNote] = useState(""); const client = useQueryClient(); const mutation = useMutation({ mutationFn: () => api.adjustInventory({ canonical_product_id: item.id, base_unit: item.unit, quantity_delta: kind === "manual_remove" ? -Math.abs(Number(delta)) : Math.abs(Number(delta)), transaction_type: kind, note: note || null }), onSuccess: () => { client.invalidateQueries({ queryKey: queryKeys.inventory }); onClose(); } }); return <Dialog title={`Adjust ${item.product}`} onClose={onClose}><div className="mt-5 grid gap-4"><label className="text-sm font-semibold">Adjustment type<select className="field mt-1.5" value={kind} onChange={(event) => setKind(event.target.value)}><option value="manual_add">Add stock</option><option value="manual_remove">Remove stock</option><option value="correction">Correction</option></select></label><label className="text-sm font-semibold">Quantity ({item.unit})<input className="field mt-1.5" type="number" min="0.001" step="0.001" value={delta} onChange={(event) => setDelta(event.target.value)} /></label><label className="text-sm font-semibold">Note (optional)<input className="field mt-1.5" value={note} onChange={(event) => setNote(event.target.value)} placeholder="e.g. Kitchen usage" /></label></div>{mutation.error && <p className="mt-4 text-sm text-rose-700">{mutation.error.message}</p>}<div className="mt-7 flex justify-end gap-3"><button onClick={onClose} className="btn-quiet">Cancel</button><button disabled={!Number(delta) || mutation.isPending} onClick={() => mutation.mutate()} className="btn-primary">Save adjustment</button></div></Dialog>; }
+function InventoryPage() {
+  const [term, setTerm] = useState("");
+  const [selected, setSelected] = useState<{
+    id: string;
+    product: string;
+    unit: string;
+  } | null>(null);
+  const [creating, setCreating] = useState(false);
+  const inventory = useQuery({
+    queryKey: queryKeys.inventory,
+    queryFn: api.inventory,
+  });
+  const rows =
+    inventory.data?.items.filter((item) =>
+      item.product.toLowerCase().includes(term.toLowerCase()),
+    ) ?? [];
+  return (
+    <div className="space-y-6">
+      <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <span className="eyebrow">Stock position</span>
+          <h2 className="mt-2 text-3xl font-bold tracking-tight">
+            Inventory that stays{" "}
+            <em className="font-serif font-normal text-moss">accountable.</em>
+          </h2>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <div className="relative">
+            <Search
+              className="absolute left-3 top-3 text-slate-400"
+              size={17}
+            />
+            <input
+              className="field w-72 pl-9"
+              value={term}
+              onChange={(event) => setTerm(event.target.value)}
+              placeholder="Search inventory"
+            />
+          </div>
+          <button className="btn-primary" onClick={() => setCreating(true)}>
+            <Box size={16} /> New adjustment
+          </button>
+        </div>
+      </section>
+      {inventory.isError ? (
+        <ErrorState error={inventory.error} />
+      ) : inventory.isPending ? (
+        <Skeleton className="h-80" />
+      ) : (
+        <section className="surface overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-400">
+                <tr>
+                  <th className="p-4">Product</th>
+                  <th className="p-4">Current quantity</th>
+                  <th className="p-4">Last updated</th>
+                  <th className="p-4" />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((item) => (
+                  <tr
+                    key={item.id}
+                    className="border-b border-slate-100 last:border-0"
+                  >
+                    <td className="p-4 font-semibold">{item.product}</td>
+                    <td className="p-4">
+                      <strong>{item.quantity}</strong>{" "}
+                      <span className="text-slate-500">{item.unit}</span>
+                    </td>
+                    <td className="p-4 text-sm text-slate-500">
+                      {dateTime(item.updated_at)}
+                    </td>
+                    <td className="p-4 text-right">
+                      <button
+                        onClick={() =>
+                          setSelected({
+                            id: item.canonical_product_id,
+                            product: item.product,
+                            unit: item.unit,
+                          })
+                        }
+                        className="btn-secondary"
+                      >
+                        Adjust
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!rows.length && (
+                  <tr>
+                    <td colSpan={4}>
+                      <Empty
+                        icon={Box}
+                        title="No matching inventory"
+                        body="Record a purchase or adjust stock to start tracking an item."
+                      />
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+      {selected && (
+        <InventoryDialog item={selected} onClose={() => setSelected(null)} />
+      )}
+      {creating && (
+        <InventoryProductDialog
+          onClose={() => setCreating(false)}
+          onSelect={(product, unit) => {
+            setCreating(false);
+            setSelected({
+              id: product.id,
+              product: product.display_name,
+              unit,
+            });
+          }}
+        />
+      )}
+    </div>
+  );
+}
 
-function PurchasesPage() { const purchases = useQuery({ queryKey: queryKeys.purchases, queryFn: api.purchases }); const [term, setTerm] = useState(""); const rows = purchases.data?.items.filter((item) => item.supplier.toLowerCase().includes(term.toLowerCase())) ?? []; return <div className="space-y-6"><section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><span className="eyebrow">Actual paid values</span><h2 className="mt-2 text-3xl font-bold tracking-tight">Purchase history, <em className="font-serif font-normal text-moss">without guesswork.</em></h2></div><Link className="btn-primary" to="/compare">Record a purchase</Link></section><section className="surface overflow-hidden"><div className="flex items-center justify-between border-b border-slate-100 p-5"><h3 className="font-bold">Purchases</h3><input className="field w-48 py-2" value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Filter supplier" /></div>{purchases.isError ? <ErrorState error={purchases.error}/> : purchases.isPending ? <Skeleton className="m-5 h-64"/> : <div className="overflow-x-auto"><table className="w-full text-left"><thead className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-400"><tr><th className="p-4">Date</th><th className="p-4">Supplier</th><th className="p-4">Notes</th><th className="p-4 text-right">Actual spend</th></tr></thead><tbody>{rows.map((purchase) => <tr key={purchase.id} className="border-b border-slate-100 last:border-0"><td className="p-4 text-sm text-slate-500">{shortDate(purchase.purchased_at)}</td><td className="p-4 font-semibold">{purchase.supplier}</td><td className="max-w-72 truncate p-4 text-sm text-slate-500">{purchase.notes || "—"}</td><td className="p-4 text-right font-bold">{money(purchase.total_amount)}</td></tr>)}{!rows.length && <tr><td colSpan={4}><Empty icon={ReceiptText} title="No purchases yet" body="Record a supplier purchase from the comparison workspace."/></td></tr>}</tbody></table></div>}</section></div>; }
+function InventoryProductDialog({
+  onClose,
+  onSelect,
+}: {
+  onClose: () => void;
+  onSelect: (product: Product, unit: "kg" | "l" | "piece") => void;
+}) {
+  const [term, setTerm] = useState("");
+  const [unit, setUnit] = useState<"kg" | "l" | "piece">("kg");
+  const search = useQuery({
+    queryKey: ["inventory-product-search", term],
+    queryFn: () => api.search(term),
+    enabled: term.trim().length >= 2,
+  });
+  return (
+    <Dialog title="Choose a product to adjust" onClose={onClose}>
+      <label className="mt-5 block text-sm font-semibold">
+        Product search
+        <input
+          autoFocus
+          className="field mt-1.5"
+          value={term}
+          onChange={(event) => setTerm(event.target.value)}
+          placeholder="Search a canonical product"
+        />
+      </label>
+      <label className="mt-4 block text-sm font-semibold">
+        Base unit
+        <select
+          className="field mt-1.5"
+          value={unit}
+          onChange={(event) =>
+            setUnit(event.target.value as "kg" | "l" | "piece")
+          }
+        >
+          <option value="kg">kg</option>
+          <option value="l">litre</option>
+          <option value="piece">piece</option>
+        </select>
+      </label>
+      <div className="mt-5 max-h-64 space-y-2 overflow-auto">
+        {search.isPending && <Skeleton className="h-12" />}
+        {search.data?.items.map((product) => (
+          <button
+            key={product.id}
+            onClick={() => onSelect(product, unit)}
+            className="block w-full rounded-xl border border-slate-100 p-3 text-left transition hover:border-emerald-200 hover:bg-emerald-50"
+          >
+            <strong className="text-sm">{product.display_name}</strong>
+            <span className="ml-2 text-xs text-slate-500">
+              {[product.brand, product.category].filter(Boolean).join(" · ")}
+            </span>
+          </button>
+        ))}
+        {term.trim().length >= 2 &&
+          search.data &&
+          !search.data.items.length && (
+            <p className="py-6 text-center text-sm text-slate-500">
+              No canonical product matches this search.
+            </p>
+          )}
+      </div>
+    </Dialog>
+  );
+}
+function InventoryDialog({
+  item,
+  onClose,
+}: {
+  item: { id: string; product: string; unit: string };
+  onClose: () => void;
+}) {
+  const [delta, setDelta] = useState("1");
+  const [kind, setKind] = useState("manual_add");
+  const [note, setNote] = useState("");
+  const client = useQueryClient();
+  const { notify } = useNotice();
+  const mutation = useMutation({
+    mutationFn: () =>
+      api.adjustInventory({
+        canonical_product_id: item.id,
+        base_unit: item.unit,
+        quantity_delta:
+          kind === "manual_remove"
+            ? -Math.abs(Number(delta))
+            : Math.abs(Number(delta)),
+        transaction_type: kind,
+        note: note || null,
+      }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: queryKeys.inventory });
+      notify("Inventory adjusted", "Your stock position has been refreshed.");
+      onClose();
+    },
+  });
+  return (
+    <Dialog title={`Adjust ${item.product}`} onClose={onClose}>
+      <div className="mt-5 grid gap-4">
+        <label className="text-sm font-semibold">
+          Adjustment type
+          <select
+            className="field mt-1.5"
+            value={kind}
+            onChange={(event) => setKind(event.target.value)}
+          >
+            <option value="manual_add">Add stock</option>
+            <option value="manual_remove">Remove stock</option>
+            <option value="correction">Correction</option>
+          </select>
+        </label>
+        <label className="text-sm font-semibold">
+          Quantity ({item.unit})
+          <input
+            className="field mt-1.5"
+            type="number"
+            min="0.001"
+            step="0.001"
+            value={delta}
+            onChange={(event) => setDelta(event.target.value)}
+          />
+        </label>
+        <label className="text-sm font-semibold">
+          Note (optional)
+          <input
+            className="field mt-1.5"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="e.g. Kitchen usage"
+          />
+        </label>
+      </div>
+      {mutation.error && (
+        <p className="mt-4 text-sm text-rose-700">{mutation.error.message}</p>
+      )}
+      <div className="mt-7 flex justify-end gap-3">
+        <button onClick={onClose} className="btn-quiet">
+          Cancel
+        </button>
+        <button
+          disabled={!Number(delta) || mutation.isPending}
+          onClick={() => mutation.mutate()}
+          className="btn-primary"
+        >
+          Save adjustment
+        </button>
+      </div>
+    </Dialog>
+  );
+}
 
-function SpendingPage() { const analytics = useQuery({ queryKey: queryKeys.analytics, queryFn: api.analytics }); if (analytics.isError) return <ErrorState error={analytics.error}/>; if (analytics.isPending) return <div className="grid gap-5 lg:grid-cols-2"><Skeleton className="h-64"/><Skeleton className="h-64"/></div>; const data = analytics.data!; return <div className="space-y-6"><section><span className="eyebrow">Procurement analytics</span><h2 className="mt-2 text-3xl font-bold tracking-tight">Know where every rupee <em className="font-serif font-normal text-moss">is going.</em></h2></section><section className="grid gap-5 lg:grid-cols-[.8fr_1.2fr]"><Metric label="Total spend this month" value={money(data.current_month_spend)} detail="From recorded procurement purchases" icon={TrendingUp}/><article className="surface min-h-64 p-6"><h3 className="font-bold">Spend timeline</h3><p className="mt-1 text-sm text-slate-500">Actual purchase totals over time</p>{data.over_time.length ? <ResponsiveContainer width="100%" height={200}><AreaChart data={data.over_time}><CartesianGrid vertical={false} stroke="#edf0ec"/><XAxis dataKey="date" tickFormatter={shortDate} axisLine={false} tickLine={false}/><YAxis hide/><Tooltip formatter={(value: number) => money(value)}/><Area dataKey="amount" type="monotone" stroke="#2f6a4f" fill="#d8e8d9" strokeWidth={3}/></AreaChart></ResponsiveContainer> : <Empty icon={ChartNoAxesCombined} title="No spending timeline" body="Recorded purchases create the analytics trend."/>}</article></section><section className="grid gap-5 lg:grid-cols-2"><ChartCard title="Supplier split" data={data.by_supplier} keyName="supplier"/><ChartCard title="Category split" data={data.by_category} keyName="category"/></section></div>; }
-function ChartCard({ title, data, keyName }: { title: string; data: { amount: number; [key: string]: string | number }[]; keyName: string }) { return <article className="surface min-h-80 p-6"><h3 className="font-bold">{title}</h3><p className="mt-1 text-sm text-slate-500">Where procurement spend accumulates</p>{data.length ? <ResponsiveContainer width="100%" height={220}><BarChart layout="vertical" data={data} margin={{ left: 20 }}><XAxis type="number" hide/><YAxis type="category" dataKey={keyName} width={90} axisLine={false} tickLine={false}/><Tooltip formatter={(value: number) => money(value)}/><Bar dataKey="amount" radius={[0, 8, 8, 0]}>{data.map((_, index) => <Cell key={index} fill={index % 2 ? "#9dc5ac" : "#2f6a4f"}/>)}</Bar></BarChart></ResponsiveContainer> : <Empty icon={ChartNoAxesCombined} title={`No ${title.toLowerCase()} yet`} body="Data will appear once purchases are recorded."/>}</article>; }
+function PurchasesPage() {
+  const purchases = useQuery({
+    queryKey: queryKeys.purchases,
+    queryFn: api.purchases,
+  });
+  const [term, setTerm] = useState("");
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(
+    null,
+  );
+  const detail = useQuery({
+    queryKey: ["purchase-detail", selectedPurchaseId],
+    queryFn: () => api.purchaseDetail(selectedPurchaseId!),
+    enabled: Boolean(selectedPurchaseId),
+  });
+  const rows =
+    purchases.data?.items.filter((item) =>
+      item.supplier.toLowerCase().includes(term.toLowerCase()),
+    ) ?? [];
+  return (
+    <div className="space-y-6">
+      <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <span className="eyebrow">Actual paid values</span>
+          <h2 className="mt-2 text-3xl font-bold tracking-tight">
+            Purchase history,{" "}
+            <em className="font-serif font-normal text-moss">
+              without guesswork.
+            </em>
+          </h2>
+        </div>
+        <Link className="btn-primary" to="/compare">
+          Record a purchase
+        </Link>
+      </section>
+      <section className="surface overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-100 p-5">
+          <h3 className="font-bold">Purchases</h3>
+          <input
+            className="field w-48 py-2"
+            value={term}
+            onChange={(event) => setTerm(event.target.value)}
+            placeholder="Filter supplier"
+          />
+        </div>
+        {purchases.isError ? (
+          <ErrorState error={purchases.error} />
+        ) : purchases.isPending ? (
+          <Skeleton className="m-5 h-64" />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-400">
+                <tr>
+                  <th className="p-4">Date</th>
+                  <th className="p-4">Supplier</th>
+                  <th className="p-4">Notes</th>
+                  <th className="p-4 text-right">Actual spend</th>
+                  <th className="p-4" />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((purchase) => (
+                  <tr
+                    key={purchase.id}
+                    className="border-b border-slate-100 last:border-0"
+                  >
+                    <td className="p-4 text-sm text-slate-500">
+                      {shortDate(purchase.purchased_at)}
+                    </td>
+                    <td className="p-4 font-semibold">{purchase.supplier}</td>
+                    <td className="max-w-72 truncate p-4 text-sm text-slate-500">
+                      {purchase.notes || "—"}
+                    </td>
+                    <td className="p-4 text-right font-bold">
+                      {money(purchase.total_amount)}
+                    </td>
+                    <td className="p-4 text-right">
+                      <button
+                        onClick={() => setSelectedPurchaseId(purchase.id)}
+                        className="btn-quiet text-moss"
+                      >
+                        View items
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!rows.length && (
+                  <tr>
+                    <td colSpan={5}>
+                      <Empty
+                        icon={ReceiptText}
+                        title="No purchases yet"
+                        body="Record a supplier purchase from the comparison workspace."
+                      />
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      {selectedPurchaseId && (
+        <PurchaseDetailDialog
+          loading={detail.isPending}
+          detail={detail.data}
+          error={detail.error}
+          onClose={() => setSelectedPurchaseId(null)}
+        />
+      )}
+    </div>
+  );
+}
 
-function SettingsPage() { const session = useQuery({ queryKey: queryKeys.session, queryFn: api.session }); return <div className="max-w-3xl space-y-6"><section><span className="eyebrow">Workspace settings</span><h2 className="mt-2 text-3xl font-bold tracking-tight">Your fixed beta location.</h2><p className="mt-2 text-sm text-slate-500">This application currently supports one fixed restaurant location. Editing is intentionally unavailable until a safe update API is introduced.</p></section><section className="surface divide-y divide-slate-100">{session.isPending ? <Skeleton className="m-6 h-32"/> : <><div className="p-6"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Restaurant</p><p className="mt-2 text-lg font-bold">{session.data?.restaurant?.name}</p></div><div className="p-6"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Fixed location</p><div className="mt-3 flex items-start gap-3"><span className="rounded-xl bg-emerald-50 p-2 text-moss"><MapPin size={18}/></span><div><p className="font-bold">{session.data?.location?.label}</p><p className="mt-1 text-sm text-slate-500">{session.data?.location?.city} · {session.data?.location?.pincode}</p><p className="mt-3 text-xs leading-5 text-slate-500">Supplier-store verification is managed separately. A restaurant pincode never implies supplier location pricing.</p></div></div></div><div className="p-6"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Account</p><p className="mt-2 font-semibold">{session.data?.email}</p><p className="mt-1 text-sm text-slate-500">Role: {session.data?.role}</p></div></>}</section></div>; }
+function PurchaseDetailDialog({
+  loading,
+  detail,
+  error,
+  onClose,
+}: {
+  loading: boolean;
+  detail: Awaited<ReturnType<typeof api.purchaseDetail>> | undefined;
+  error: Error | null;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog title="Purchase items" onClose={onClose}>
+      {loading ? (
+        <Skeleton className="mt-5 h-36" />
+      ) : error ? (
+        <ErrorState error={error} />
+      ) : detail ? (
+        <>
+          <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 p-4">
+            <div>
+              <p className="font-bold">{detail.supplier}</p>
+              <p className="mt-1 text-sm text-slate-500">
+                {shortDate(detail.purchased_at)}
+              </p>
+            </div>
+            <strong>{money(detail.total_amount)}</strong>
+          </div>
+          <div className="mt-5 space-y-3">
+            {detail.items.map((item) => (
+              <div
+                key={item.id}
+                className="rounded-xl border border-slate-100 p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{item.product}</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {item.quantity} {item.unit} · {item.packs} pack
+                      {item.packs === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  <strong>{money(item.actual_total_price)}</strong>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  {money(item.actual_unit_price)} / {item.unit}
+                </p>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </Dialog>
+  );
+}
 
-export function App() { return <Routes><Route path="/login" element={<AuthPage/>}/><Route path="/onboarding" element={<OnboardingPage/>}/><Route path="/*" element={<AuthGate><Shell><Routes><Route path="/" element={<Navigate to="/dashboard" replace/>}/><Route path="/dashboard" element={<DashboardPage/>}/><Route path="/compare" element={<ComparePage/>}/><Route path="/purchases" element={<PurchasesPage/>}/><Route path="/inventory" element={<InventoryPage/>}/><Route path="/spending" element={<SpendingPage/>}/><Route path="/settings" element={<SettingsPage/>}/><Route path="*" element={<Navigate to="/dashboard" replace/>}/></Routes></Shell></AuthGate>}/></Routes>; }
+function SpendingPage() {
+  const analytics = useQuery({
+    queryKey: queryKeys.analytics,
+    queryFn: api.analytics,
+  });
+  if (analytics.isError) return <ErrorState error={analytics.error} />;
+  if (analytics.isPending)
+    return (
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Skeleton className="h-64" />
+        <Skeleton className="h-64" />
+      </div>
+    );
+  const data = analytics.data!;
+  return (
+    <div className="space-y-6">
+      <section>
+        <span className="eyebrow">Procurement analytics</span>
+        <h2 className="mt-2 text-3xl font-bold tracking-tight">
+          Know where every rupee{" "}
+          <em className="font-serif font-normal text-moss">is going.</em>
+        </h2>
+      </section>
+      <section className="grid gap-5 lg:grid-cols-[.8fr_1.2fr]">
+        <Metric
+          label="Total spend this month"
+          value={money(data.current_month_spend)}
+          detail="From recorded procurement purchases"
+          icon={TrendingUp}
+        />
+        <article className="surface min-h-64 p-6">
+          <h3 className="font-bold">Spend timeline</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Actual purchase totals over time
+          </p>
+          {data.over_time.length ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={data.over_time}>
+                <CartesianGrid vertical={false} stroke="#edf0ec" />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={shortDate}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis hide />
+                <Tooltip formatter={(value: number) => money(value)} />
+                <Area
+                  dataKey="amount"
+                  type="monotone"
+                  stroke="#2f6a4f"
+                  fill="#d8e8d9"
+                  strokeWidth={3}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty
+              icon={ChartNoAxesCombined}
+              title="No spending timeline"
+              body="Recorded purchases create the analytics trend."
+            />
+          )}
+        </article>
+      </section>
+      <section className="grid gap-5 lg:grid-cols-2">
+        <ChartCard
+          title="Supplier split"
+          data={data.by_supplier}
+          keyName="supplier"
+        />
+        <ChartCard
+          title="Category split"
+          data={data.by_category}
+          keyName="category"
+        />
+      </section>
+    </div>
+  );
+}
+function ChartCard({
+  title,
+  data,
+  keyName,
+}: {
+  title: string;
+  data: { amount: number; [key: string]: string | number }[];
+  keyName: string;
+}) {
+  return (
+    <article className="surface min-h-80 p-6">
+      <h3 className="font-bold">{title}</h3>
+      <p className="mt-1 text-sm text-slate-500">
+        Where procurement spend accumulates
+      </p>
+      {data.length ? (
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart layout="vertical" data={data} margin={{ left: 20 }}>
+            <XAxis type="number" hide />
+            <YAxis
+              type="category"
+              dataKey={keyName}
+              width={90}
+              axisLine={false}
+              tickLine={false}
+            />
+            <Tooltip formatter={(value: number) => money(value)} />
+            <Bar dataKey="amount" radius={[0, 8, 8, 0]}>
+              {data.map((_, index) => (
+                <Cell key={index} fill={index % 2 ? "#9dc5ac" : "#2f6a4f"} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      ) : (
+        <Empty
+          icon={ChartNoAxesCombined}
+          title={`No ${title.toLowerCase()} yet`}
+          body="Data will appear once purchases are recorded."
+        />
+      )}
+    </article>
+  );
+}
+
+function SettingsPage() {
+  const session = useQuery({
+    queryKey: queryKeys.session,
+    queryFn: api.session,
+  });
+  return (
+    <div className="max-w-3xl space-y-6">
+      <section>
+        <span className="eyebrow">Workspace settings</span>
+        <h2 className="mt-2 text-3xl font-bold tracking-tight">
+          Your fixed beta location.
+        </h2>
+        <p className="mt-2 text-sm text-slate-500">
+          This application currently supports one fixed restaurant location.
+          Editing is intentionally unavailable until a safe update API is
+          introduced.
+        </p>
+      </section>
+      <section className="surface divide-y divide-slate-100">
+        {session.isPending ? (
+          <Skeleton className="m-6 h-32" />
+        ) : (
+          <>
+            <div className="p-6">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Restaurant
+              </p>
+              <p className="mt-2 text-lg font-bold">
+                {session.data?.restaurant?.name}
+              </p>
+            </div>
+            <div className="p-6">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Fixed location
+              </p>
+              <div className="mt-3 flex items-start gap-3">
+                <span className="rounded-xl bg-emerald-50 p-2 text-moss">
+                  <MapPin size={18} />
+                </span>
+                <div>
+                  <p className="font-bold">{session.data?.location?.label}</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {session.data?.location?.city} ·{" "}
+                    {session.data?.location?.pincode}
+                  </p>
+                  <p className="mt-3 text-xs leading-5 text-slate-500">
+                    Supplier-store verification is managed separately. A
+                    restaurant pincode never implies supplier location pricing.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Account
+              </p>
+              <p className="mt-2 font-semibold">{session.data?.email}</p>
+              <p className="mt-1 text-sm text-slate-500">
+                Role: {session.data?.role}
+              </p>
+            </div>
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
+export function App() {
+  return (
+    <NoticeProvider>
+      <Routes>
+        <Route path="/login" element={<AuthPage />} />
+        <Route path="/onboarding" element={<OnboardingPage />} />
+        <Route
+          path="/*"
+          element={
+            <AuthGate>
+              <Shell>
+                <Routes>
+                  <Route
+                    path="/"
+                    element={<Navigate to="/dashboard" replace />}
+                  />
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/compare" element={<ComparePage />} />
+                  <Route path="/purchases" element={<PurchasesPage />} />
+                  <Route path="/inventory" element={<InventoryPage />} />
+                  <Route path="/spending" element={<SpendingPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route
+                    path="*"
+                    element={<Navigate to="/dashboard" replace />}
+                  />
+                </Routes>
+              </Shell>
+            </AuthGate>
+          }
+        />
+      </Routes>
+    </NoticeProvider>
+  );
+}

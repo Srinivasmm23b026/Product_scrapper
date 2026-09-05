@@ -16,9 +16,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
-    throw new ApiError(payload.detail || `Request failed (${response.status})`, response.status);
+    throw new ApiError(
+      payload.detail || `Request failed (${response.status})`,
+      response.status,
+    );
   }
-  return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>);
+  return response.status === 204
+    ? (undefined as T)
+    : (response.json() as Promise<T>);
 }
 
 export type Session = {
@@ -29,7 +34,12 @@ export type Session = {
   location?: { id: string; label: string; city: string; pincode: string };
 };
 
-export type Product = { id: string; display_name: string; brand: string | null; category: string | null };
+export type Product = {
+  id: string;
+  display_name: string;
+  brand: string | null;
+  category: string | null;
+};
 export type Offer = {
   id: string;
   product_variant_id: string | null;
@@ -80,8 +90,33 @@ export type History = {
   observations: HistoryPoint[];
 };
 
-export type Purchase = { id: string; supplier: string; purchased_at: string; total_amount: number; notes: string | null };
-export type InventoryItem = { id: string; canonical_product_id: string; product: string; quantity: number; unit: "kg" | "l" | "piece"; updated_at: string };
+export type Purchase = {
+  id: string;
+  supplier: string;
+  purchased_at: string;
+  total_amount: number;
+  notes: string | null;
+};
+export type PurchaseDetail = Purchase & {
+  items: {
+    id: string;
+    product: string;
+    quantity: number;
+    unit: string;
+    packs: number;
+    actual_unit_price: number;
+    actual_total_price: number;
+    supplier_url: string | null;
+  }[];
+};
+export type InventoryItem = {
+  id: string;
+  canonical_product_id: string;
+  product: string;
+  quantity: number;
+  unit: "kg" | "l" | "piece";
+  updated_at: string;
+};
 export type Analytics = {
   current_month_spend: number;
   by_supplier: { supplier: string; amount: number }[];
@@ -89,24 +124,75 @@ export type Analytics = {
   over_time: { date: string; amount: number }[];
   recent_purchases: Purchase[];
 };
-export type ScrapeRun = { id: string; supplier: string; supplier_location: string; status: string; observed_count: number; finished_at: string | null; warning_count: number };
+export type ScrapeRun = {
+  id: string;
+  supplier: string;
+  supplier_location: string;
+  status: string;
+  observed_count: number;
+  finished_at: string | null;
+  warning_count: number;
+};
 
 export const api = {
   session: () => request<Session>("/auth/session"),
-  login: (email: string, password: string) => request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
-  signup: (email: string, password: string) => request("/auth/signup", { method: "POST", body: JSON.stringify({ email, password }) }),
-  confirm: (email: string, code: string) => request("/auth/confirm", { method: "POST", body: JSON.stringify({ email, code }) }),
-  forgotPassword: (email: string) => request("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
-  resetPassword: (email: string, code: string, password: string) => request("/auth/reset-password", { method: "POST", body: JSON.stringify({ email, code, password }) }),
+  login: (email: string, password: string) =>
+    request("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  signup: (email: string, password: string) =>
+    request("/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  confirm: (email: string, code: string) =>
+    request("/auth/confirm", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
+    }),
+  forgotPassword: (email: string) =>
+    request("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+  resetPassword: (email: string, code: string, password: string) =>
+    request("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ email, code, password }),
+    }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
-  onboard: (payload: { restaurant_name: string; location_label: string; city: string; pincode: string }) => request("/restaurants/bootstrap", { method: "POST", body: JSON.stringify(payload) }),
-  search: (query: string) => request<{ items: Product[] }>(`/products/search?q=${encodeURIComponent(query)}`),
-  compare: (product_id: string, required_quantity: number, unit: string) => request<Comparison>("/compare", { method: "POST", body: JSON.stringify({ product_id, required_quantity, unit }) }),
-  history: (productId: string) => request<History>(`/products/${productId}/history`),
+  onboard: (payload: {
+    restaurant_name: string;
+    location_label: string;
+    city: string;
+    pincode: string;
+  }) =>
+    request("/restaurants/bootstrap", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  search: (query: string) =>
+    request<{ items: Product[] }>(
+      `/products/search?q=${encodeURIComponent(query)}`,
+    ),
+  compare: (product_id: string, required_quantity: number, unit: string) =>
+    request<Comparison>("/compare", {
+      method: "POST",
+      body: JSON.stringify({ product_id, required_quantity, unit }),
+    }),
+  history: (productId: string) =>
+    request<History>(`/products/${productId}/history`),
   purchases: () => request<{ items: Purchase[] }>("/purchases"),
+  purchaseDetail: (id: string) => request<PurchaseDetail>(`/purchases/${id}`),
   inventory: () => request<{ items: InventoryItem[] }>("/inventory"),
   analytics: () => request<Analytics>("/analytics/spending"),
   runs: () => request<{ items: ScrapeRun[] }>("/scrape-runs"),
-  createPurchase: (payload: unknown) => request("/purchases", { method: "POST", body: JSON.stringify(payload) }),
-  adjustInventory: (payload: unknown) => request("/inventory/adjustments", { method: "POST", body: JSON.stringify(payload) }),
+  createPurchase: (payload: unknown) =>
+    request("/purchases", { method: "POST", body: JSON.stringify(payload) }),
+  adjustInventory: (payload: unknown) =>
+    request("/inventory/adjustments", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 };

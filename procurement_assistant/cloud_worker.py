@@ -158,6 +158,7 @@ def build_adapter(
         raw_reference = _snapshot(settings, storage, source, products)
         observed_at = datetime.now(UTC)
         observations = []
+        observed_offer_ids = set()
         warnings = []
         with factory.begin() as session:
             db_supplier = session.get(Supplier, supplier.id)
@@ -165,6 +166,11 @@ def build_adapter(
             for row in products:
                 try:
                     offer = _catalog_offer(session, db_supplier, db_location, row)
+                    if offer.id in observed_offer_ids:
+                        warnings.append(
+                            f"{row.get('external_id', 'unknown')}: duplicate supplier offer skipped"
+                        )
+                        continue
                     observations.append(
                         OfferObservationInput(
                             supplier_offer_id=offer.id,
@@ -175,6 +181,7 @@ def build_adapter(
                             raw_reference=raw_reference,
                         )
                     )
+                    observed_offer_ids.add(offer.id)
                 except (TypeError, ValueError) as exc:
                     warnings.append(f"{row.get('external_id', 'unknown')}: {exc}")
         expected = expected_min if len(observations) < expected_min else len(observations)

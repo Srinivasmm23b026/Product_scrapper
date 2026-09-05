@@ -158,9 +158,26 @@ def _normalize(p: dict, pincode: str, location_note: str) -> dict:
     }
 
 
-def _scrape_for_pincode(session: requests.Session, pincode: str):
-    store_code, resolved = find_store_code(session, pincode)
-    location_note = config.lots_location_note(pincode, store_code, resolved)
+def _scrape_for_pincode(
+    session: requests.Session,
+    pincode: str,
+    *,
+    store_code: str | None = None,
+    resolved: bool | None = None,
+    attempted_pincodes: tuple[str, ...] | None = None,
+):
+    if store_code is None or resolved is None:
+        store_code, resolved = find_store_code(session, pincode)
+    if resolved:
+        location_note = config.lots_location_note(pincode, store_code, True)
+        effective_pincode = pincode
+    else:
+        location_note = config.lots_fallback_location_note(
+            store_code, attempted_pincodes or (pincode,)
+        )
+        # The pincode remains an API payload compatibility value only. It is
+        # not an offer identity when the store lookup did not resolve it.
+        effective_pincode = None
 
     seen_ids = set()
     results = []
@@ -179,7 +196,7 @@ def _scrape_for_pincode(session: requests.Session, pincode: str):
                 data = _search_page(session, menu_id, page, pincode, store_code)
                 total_pages = data.get("totalPages", 1)
                 for p in data.get("content", []):
-                    norm = _normalize(p, pincode, location_note)
+                    norm = _normalize(p, effective_pincode, location_note)
                     if not norm["external_id"] or norm["external_id"] in seen_ids:
                         continue
                     seen_ids.add(norm["external_id"])
@@ -196,26 +213,48 @@ def _scrape_for_pincode(session: requests.Session, pincode: str):
 
 
 def scrape():
-    """Runs one full category pass per configured pincode, each on its own
-    requests.Session() so storeCode resolution from one pincode never leaks
-    into another's requests."""
-    all_results = []
-    seen_keys = set()
+    """Scrape one effective Lots store for the single-location worker.
+
+    Multiple configured pincodes can resolve to the same fallback store. In
+    that case, perform one catalogue pass and retain no pincode identity. A
+    run that resolves distinct stores is rejected rather than misattributing
+    them to the one supplier location supplied to the worker.
+    """
+    effective_stores: dict[str, dict] = {}
     for pincode in config.LOTS_TARGET_PINCODES:
         session = requests.Session()
         try:
-            pincode_results = _scrape_for_pincode(session, pincode)
+            store_code, resolved = find_store_code(session, pincode)
         except Exception as exc:
-            # A failure scraping one pincode must not cost the results
-            # already gathered from other pincodes.
-            logger.warning("lots[%s]: pincode scrape failed entirely: %s", pincode, exc)
-            pincode_results = []
+            logger.warning("lots[%s]: store resolution failed entirely: %s", pincode, exc)
+            store_code, resolved = config.LOTS_DEFAULT_STORE_CODE, False
         finally:
             session.close()
-        for norm in pincode_results:
-            key = (norm["external_id"], norm["pincode"])
-            if key in seen_keys:
-                continue
-            seen_keys.add(key)
-            all_results.append(norm)
-    return all_results
+        group = effective_stores.setdefault(
+            store_code, {"pincode": pincode, "resolved": [], "pincodes": []}
+        )
+        group["resolved"].append(resolved)
+        group["pincodes"].append(pincode)
+
+    if len(effective_stores) != 1:
+        raise RuntimeError(
+            "Lots resolved multiple effective stores; schedule each verified store with its own "
+            "supplier location instead of writing them through the single-location worker"
+        )
+
+    store_code, group = next(iter(effective_stores.items()))
+    attempted_pincodes = tuple(group["pincodes"])
+    # A store is pincode-verified only if every configured pincode that
+    # contributed to this group was explicitly resolved by the locator.
+    resolved = all(group["resolved"])
+    session = requests.Session()
+    try:
+        return _scrape_for_pincode(
+            session,
+            group["pincode"],
+            store_code=store_code,
+            resolved=resolved,
+            attempted_pincodes=attempted_pincodes,
+        )
+    finally:
+        session.close()

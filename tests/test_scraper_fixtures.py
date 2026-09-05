@@ -116,6 +116,41 @@ def test_lots_paginates_to_reported_total(monkeypatch) -> None:
     results = lots._scrape_for_pincode(object(), "110001")
     assert pages == [1, 2]
     assert [row["external_id"] for row in results] == ["401", "402"]
+    assert all(row["pincode"] is None for row in results)
+    assert all("unverified fallback store" in row["location_note"] for row in results)
+
+
+def test_lots_collapses_multiple_unresolved_pincodes_to_one_fallback_store(monkeypatch) -> None:
+    monkeypatch.setattr(lots.config, "LOTS_TARGET_PINCODES", ["110001", "560001"])
+    calls = []
+
+    def scrape_once(_session, pincode, **kwargs):
+        calls.append((pincode, kwargs))
+        return [{"external_id": "401", "pincode": None, "location_note": "fallback"}]
+
+    monkeypatch.setattr(lots, "find_store_code", lambda _session, _pincode: ("101", False))
+    monkeypatch.setattr(lots, "_scrape_for_pincode", scrape_once)
+
+    assert lots.scrape() == [{"external_id": "401", "pincode": None, "location_note": "fallback"}]
+    assert calls == [
+        (
+            "110001",
+            {
+                "store_code": "101",
+                "resolved": False,
+                "attempted_pincodes": ("110001", "560001"),
+            },
+        )
+    ]
+
+
+def test_lots_refuses_to_mix_distinct_stores_in_one_worker_run(monkeypatch) -> None:
+    monkeypatch.setattr(lots.config, "LOTS_TARGET_PINCODES", ["110001", "560001"])
+    store_codes = iter([("101", True), ("102", True)])
+    monkeypatch.setattr(lots, "find_store_code", lambda _session, _pincode: next(store_codes))
+
+    with pytest.raises(RuntimeError, match="multiple effective stores"):
+        lots.scrape()
 
 
 @pytest.mark.parametrize(

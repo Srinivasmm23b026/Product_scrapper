@@ -76,7 +76,9 @@ Configure repository Actions secrets:
 
 - `SUPABASE_DATABASE_URL`: transaction-pooler URL;
 - `SUPABASE_URL` and `SUPABASE_SECRET_KEY`;
-- `HYPERPURE_SUPPLIER_LOCATION_ID` and `LOTS_SUPPLIER_LOCATION_ID` after manual verification.
+- `HYPERPURE_SUPPLIER_LOCATION_ID` after manual verification, and
+  `LOTS_SUPPLIER_LOCATION_ID=76360d25-4ded-5f3e-b1e0-0a60a1a4b3e4` for the explicitly unverified
+  fallback store 101.
 
 Enable Actions, run `Scheduled supplier scrape` manually, and inspect each matrix job, structured log,
 database run row, observation count, and Storage object. Only then rely on the daily schedule. Set

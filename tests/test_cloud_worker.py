@@ -55,7 +55,20 @@ def test_cloud_adapter_persists_catalog_snapshot_and_partial_signal(tmp_path, mo
             "in_stock": 1,
             "product_url": "https://lots.example/rice",
             "location_note": "verified fixture",
-        }
+        },
+        {
+            "source": "lots",
+            "external_id": "rice-1",
+            "name": "Test Basmati Rice",
+            "brand": "Test",
+            "category": "Rice",
+            "price": 100,
+            "mrp": 110,
+            "unit": "1 kg",
+            "in_stock": 1,
+            "product_url": "https://lots.example/rice",
+            "location_note": "duplicate fallback fixture",
+        },
     ]
     monkeypatch.setitem(cloud_worker.SCRAPERS, "lots", lambda: products)
     settings = Settings(database_url="sqlite://", local_storage_path=tmp_path)
@@ -71,7 +84,8 @@ def test_cloud_adapter_persists_catalog_snapshot_and_partial_signal(tmp_path, mo
         run = session.get(ScrapeRun, run_id)
         assert run.status == "partial"
         assert run.observed_count == 1
-        assert run.run_metadata["source_rows"] == 1
+        assert run.run_metadata["source_rows"] == 2
+        assert run.warning_count == 1
         product = session.scalar(select(SupplierProduct))
         match = session.scalar(select(ProductMatch))
         offer = session.scalar(select(SupplierOffer))

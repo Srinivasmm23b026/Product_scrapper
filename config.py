@@ -233,6 +233,15 @@ def lots_location_note(pincode, store_code, resolved):
     )
 
 
+def lots_fallback_location_note(store_code, attempted_pincodes):
+    attempted = ", ".join(attempted_pincodes)
+    return (
+        f"Lots fallback store {store_code} was used after the public store locator could not "
+        f"resolve a store for: {attempted}. This is one unverified fallback store, not a "
+        "pincode-specific price."
+    )
+
+
 def hyperpure_location_note(account, logged_in):
     if logged_in:
         return (

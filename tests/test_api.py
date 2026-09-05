@@ -127,10 +127,10 @@ def api_context():
         ]
         supplier_location = SupplierLocation(
             supplier_id=supplier.id,
-            external_location_id="store-101",
+            external_location_id="fallback-store:101",
             location_type="store",
-            name="Store 101",
-            city="Delhi",
+            name="Lots fallback store 101 (unverified)",
+            location_metadata={"verified": False, "resolution_method": "fallback"},
             active=True,
         )
         variant = ProductVariant(
@@ -238,6 +238,7 @@ def test_search_offer_compare_and_history_flow(api_context) -> None:
 
     offers = client.get(f"/api/products/{ids['product']}/offers", headers=auth()).json()
     assert offers["items"][0]["supplier"] == "Lots"
+    assert offers["items"][0]["supplier_location"] == "Lots fallback store 101 (unverified)"
     assert offers["items"][0]["stale"] is False
     comparison = client.post(
         "/api/compare",
@@ -251,6 +252,7 @@ def test_search_offer_compare_and_history_flow(api_context) -> None:
     assert history["current_price"] == 100.0
     assert history["last_observed_at"] is not None
     assert history["observations"][0]["trusted_for_statistics"] is True
+    assert history["observations"][0]["supplier_location"] == "Lots fallback store 101 (unverified)"
 
 
 def test_purchase_updates_inventory_expense_but_not_price_history(api_context) -> None:

@@ -2,7 +2,7 @@
 
 ## Portable worker contract
 
-Every runtime invokes the same Python entry point with one supplier and one verified location:
+Every runtime invokes the same Python entry point with one supplier and one explicit supplier location:
 
 ```bash
 DATABASE_URL=... LOCAL_STORAGE_PATH=/tmp/snapshots \
@@ -20,6 +20,10 @@ silently scheduling known-broken adapters would create noise rather than freshne
 
 Configured Hyperpure accounts require an OTP. Because human SMS OTPs are not unattended, the beta
 workflow uses only anonymous Hyperpure data unless a permitted unattended session mechanism exists.
+
+Lots scheduled scraping uses only `Lots fallback store 101 (unverified)` until a store-locator or
+authenticated session establishes a real store. Its fallback prices are supplier-default prices, not
+pincode-specific prices; multiple unresolved pincodes are collapsed into one catalogue pass.
 
 Each invocation starts a run, invokes one adapter, stores an immutable normalized raw snapshot,
 upserts source identities, atomically writes observations/current pointers, assigns a terminal status,

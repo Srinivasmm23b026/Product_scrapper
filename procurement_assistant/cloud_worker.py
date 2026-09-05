@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import time
@@ -48,6 +49,34 @@ def _snapshot(
     timestamp = datetime.now(UTC).strftime("%Y/%m/%d/%H%M%S")
     key = f"{settings.raw_snapshot_prefix.rstrip('/')}/{source}/{timestamp}-{uuid.uuid4()}.json"
     return storage.put_json(key, products)
+
+
+def _verified_hyperpure_location(products: list[dict], location: SupplierLocation) -> dict | None:
+    """Require authenticated outlet evidence to match the worker's DB location.
+
+    The worker may not use a successful account session to overwrite an
+    arbitrary supplier location.  Creation/update of the location itself is an
+    explicit operator action after this evidence has been inspected.
+    """
+    identities = {
+        json.dumps(row.get("authenticated_location"), sort_keys=True)
+        for row in products
+        if row.get("authenticated_location")
+    }
+    if not products:
+        return None
+    if not identities:
+        raise ValueError("authenticated Hyperpure scrape returned no outlet identity evidence")
+    if len(identities) != 1:
+        raise ValueError("authenticated Hyperpure scrape returned multiple outlet identities")
+    evidence = json.loads(identities.pop())
+    if not evidence.get("verified") or evidence.get("verification_method") != "authenticated_hyperpure_outlet_api":
+        raise ValueError("Hyperpure outlet evidence is not authenticated verification")
+    if evidence.get("external_location_id") != location.external_location_id:
+        raise ValueError("authenticated Hyperpure outlet does not match configured supplier location")
+    if not location.location_metadata.get("verified"):
+        raise ValueError("configured Hyperpure supplier location is not verified")
+    return evidence
 
 
 def _catalog_offer(session, supplier, location, row: dict) -> SupplierOffer:
@@ -155,6 +184,9 @@ def build_adapter(
             if not os.environ.get("HYPERPURE_OTP"):
                 raise RuntimeError("non-interactive Hyperpure run requires HYPERPURE_OTP")
         products = SCRAPERS[source]()
+        authenticated_location = (
+            _verified_hyperpure_location(products, location) if source == "hyperpure" else None
+        )
         raw_reference = _snapshot(settings, storage, source, products)
         observed_at = datetime.now(UTC)
         observations = []
@@ -190,7 +222,15 @@ def build_adapter(
             expected_count=expected,
             warnings=tuple(warnings),
             complete_signal=True,
-            metadata={"raw_snapshot": raw_reference, "source_rows": len(products)},
+            metadata={
+                "raw_snapshot": raw_reference,
+                "source_rows": len(products),
+                **(
+                    {"authenticated_location": authenticated_location}
+                    if authenticated_location
+                    else {}
+                ),
+            },
         )
 
     return adapter

@@ -26,6 +26,105 @@ def test_hyperpure_fixture_extracts_and_normalizes_location_metadata() -> None:
     assert normalized["pincode"] == "110001"
 
 
+def test_hyperpure_authenticated_location_uses_outlet_identity_and_switches_outlet() -> None:
+    class Response:
+        def __init__(self, payload=None, headers=None):
+            self.payload = payload or {"response": {}}
+            self.headers = headers or {}
+
+        def json(self):
+            return self.payload
+
+        def raise_for_status(self):
+            return None
+
+    class Session:
+        def __init__(self):
+            self.headers = {}
+            self.calls = []
+            self.user_data = iter(
+                [
+                    {
+                        "response": {
+                            "outlet": {
+                                "id": "default",
+                                "name": "Default outlet",
+                                "address": "Default address",
+                                "pincode": "110001",
+                            }
+                        }
+                    },
+                    {
+                        "response": {
+                            "outlet": {
+                                "id": "outlet-2",
+                                "name": "Verified Kitchen",
+                                "address": "12 Market Road",
+                                "pincode": "560001",
+                                "city": "Bengaluru",
+                            }
+                        }
+                    },
+                ]
+            )
+
+        def get(self, url, **_kwargs):
+            self.calls.append(("get", url))
+            if url == hyperpure.config.HYPERPURE_USER_DATA_API:
+                return Response(next(self.user_data), {"Authorization": "Bearer refreshed"})
+            if url == hyperpure.config.HYPERPURE_OUTLETS_API:
+                return Response({"response": {"outlets": [{"id": "outlet-2"}]}})
+            assert url == hyperpure.config.HYPERPURE_VERIFY_USER_API.format(phone="9000000000")
+            return Response()
+
+        def post(self, url, **kwargs):
+            self.calls.append(("post", url, kwargs.get("json")))
+            if url == hyperpure.config.HYPERPURE_SEND_OTP_API.format(phone="9000000000"):
+                return Response()
+            if url == hyperpure.config.HYPERPURE_SIGN_IN_API:
+                assert kwargs["json"] == {"Name": "9000000000", "Password": "", "OTP": "123456"}
+                return Response(headers={"Authorization": "Bearer initial"})
+            assert url == hyperpure.config.HYPERPURE_SWITCH_OUTLET_API
+            assert kwargs["json"] == {"OutletId": "outlet-2"}
+            return Response()
+
+    session = Session()
+    location = hyperpure.authenticate_location(
+        session,
+        {"label": "fixture", "phone": "9000000000", "outlet_id": "outlet-2"},
+        otp_provider=lambda: "123456",
+    )
+
+    assert location is not None
+    assert location.as_dict() == {
+        "external_location_id": "outlet:outlet-2",
+        "name": "Verified Kitchen",
+        "address": "12 Market Road",
+        "pincode": "560001",
+        "city": "Bengaluru",
+        "verified": True,
+        "verification_method": "authenticated_hyperpure_outlet_api",
+    }
+    assert session.headers["Authorization"] == "Bearer refreshed"
+
+
+def test_hyperpure_authenticated_scrape_fails_closed_when_outlet_is_not_verified(monkeypatch) -> None:
+    class Session:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(hyperpure.config, "HYPERPURE_ACCOUNTS", [{"label": "fixture"}])
+    monkeypatch.setattr(hyperpure.requests, "Session", Session)
+    monkeypatch.setattr(hyperpure, "authenticate_location", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        hyperpure,
+        "_scrape_pages",
+        lambda *_args, **_kwargs: pytest.fail("must not scrape anonymously after auth failure"),
+    )
+
+    assert hyperpure.scrape() == []
+
+
 def test_bigbasket_fixture_extracts_parent_and_variant() -> None:
     products = bigbasket._extract_raw_products(fixture_text("bigbasket/category.html"))
     assert len(products) == 1

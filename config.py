@@ -149,23 +149,33 @@ BIGBASKET_SET_LOCATION_API = "https://www.bigbasket.com/mapi/v3.4/user/address/"
 LOTS_STORE_LOCATOR_API = "https://api.lotswholesale.com/next-product/public/api/store/by-pincode"
 LOTS_DEFAULT_STORE_CODE = "101"
 
-# Hyperpure is B2B/contract-priced: real per-buyer pricing requires being
-# logged into a specific business account. Its login flow is phone+OTP, not
-# email/password (confirmed via its own frontend bundle -- an "OTP request
-# limit" modal exists, no password field does), so it cannot be fully
-# non-interactively scripted without an SMS-receiving integration.
-# hyperpure.login() sends the OTP then obtains the code via HYPERPURE_OTP
-# (an env var you set right before running, once you've received the SMS)
-# or an interactive input() prompt as a fallback.
-HYPERPURE_LOGIN_SEND_OTP_API = "https://www.hyperpure.com/api/v1/auth/login/send-otp"
-HYPERPURE_LOGIN_VERIFY_OTP_API = "https://www.hyperpure.com/api/v1/auth/login/verify-otp"
+# Hyperpure is B2B/contract-priced: a usable offer location is an authenticated
+# outlet, not a pincode guessed from the public catalogue.  These paths are
+# from the current public Hyperpure web bundle (observed 2026-09-05).  The
+# authentication response carries an Authorization header; the authenticated
+# user/outlet APIs reveal the real outlet id, address, and pincode.
+HYPERPURE_VERIFY_USER_API = "https://www.hyperpure.com/api/verifyUser?phoneNumber={phone}"
+HYPERPURE_SEND_OTP_API = (
+    "https://www.hyperpure.com/api/user/otpsms?isForgotPassword=true"
+    "&userPhoneNumber={phone}&source=sign_in"
+)
+HYPERPURE_SIGN_IN_API = "https://www.hyperpure.com/api/registration/signin"
+HYPERPURE_USER_DATA_API = "https://www.hyperpure.com/consumer/signInUser/v2"
+HYPERPURE_OUTLETS_API = "https://www.hyperpure.com/consumer/outlets"
+HYPERPURE_SWITCH_OUTLET_API = "https://www.hyperpure.com/consumer/switchOutlet"
 
 # One entry per business account/region you hold real credentials for.
 # Left empty by default: with no accounts configured, hyperpure.scrape()
 # falls back to today's existing anonymous public-listing behavior instead
 # of failing the whole run.
 HYPERPURE_ACCOUNTS = [
-    # {"region": "delhi-ncr", "phone": "9100000000"},
+    # {
+    #     "label": "approved-business-account",
+    #     "phone": "9100000000",
+    #     # Required where the account has multiple outlets. This is Hyperpure's
+    #     # own authenticated outlet id, never a locally invented pincode.
+    #     "outlet_id": "12345",
+    # },
 ]
 
 LOCATION_CONTEXT = {
@@ -242,16 +252,16 @@ def lots_fallback_location_note(store_code, attempted_pincodes):
     )
 
 
-def hyperpure_location_note(account, logged_in):
-    if logged_in:
+def hyperpure_location_note(location):
+    if location:
         return (
-            f"Authenticated as business account '{account['region']}' via "
-            f"Hyperpure's phone+OTP login flow; the Authorization bearer "
-            f"token captured at login is attached to every request, so "
-            f"these prices reflect that account's real contract pricing, "
-            f"not the anonymous public listing."
+            "Authenticated Hyperpure outlet "
+            f"'{location['name']}' ({location['external_location_id']}); "
+            "the outlet id, address, and pincode were returned by Hyperpure's "
+            "authenticated account APIs, so prices are tied to this outlet rather "
+            "than an anonymous listing."
         )
     return (
         LOCATION_CONTEXT["hyperpure"]["location_note"]
-        + f" (login attempt for account '{account['region']}' failed -- see log.)"
+        + " (authenticated outlet verification did not complete.)"
     )

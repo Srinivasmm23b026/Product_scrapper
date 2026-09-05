@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 
@@ -17,6 +18,36 @@ from procurement_assistant.models import (
 )
 from procurement_assistant.scraping.service import ScrapeRunService
 from procurement_assistant.settings import Settings
+
+
+def test_authenticated_hyperpure_evidence_must_match_a_verified_supplier_location() -> None:
+    location = SupplierLocation(
+        supplier_id="00000000-0000-0000-0000-000000000001",
+        external_location_id="outlet:42",
+        location_type="store",
+        name="Verified outlet",
+        location_metadata={"verified": True},
+    )
+    product = {
+        "authenticated_location": {
+            "external_location_id": "outlet:42",
+            "verified": True,
+            "verification_method": "authenticated_hyperpure_outlet_api",
+        }
+    }
+
+    assert cloud_worker._verified_hyperpure_location([product], location) == product[
+        "authenticated_location"
+    ]
+
+    location.location_metadata = {"verified": False}
+    with pytest.raises(ValueError, match="not verified"):
+        cloud_worker._verified_hyperpure_location([product], location)
+
+    location.location_metadata = {"verified": True}
+    product["authenticated_location"]["external_location_id"] = "outlet:other"
+    with pytest.raises(ValueError, match="does not match"):
+        cloud_worker._verified_hyperpure_location([product], location)
 
 
 def test_cloud_adapter_persists_catalog_snapshot_and_partial_signal(tmp_path, monkeypatch):

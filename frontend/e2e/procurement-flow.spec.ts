@@ -189,6 +189,11 @@ test("local mocked smoke: login through purchase, inventory, and analytics", asy
   await page.getByLabel("Pincode").fill("560001");
   await page.getByRole("button", { name: "Create workspace" }).click();
   await expect(page.getByText("Keep purchasing")).toBeVisible();
+  await page.getByRole("button", { name: "Collapse navigation" }).click();
+  await expect(
+    page.getByRole("button", { name: "Expand navigation" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Expand navigation" }).click();
   await page.getByRole("link", { name: "Procure", exact: true }).click();
   await page.getByLabel("Product").fill("rice");
   await page.getByRole("button", { name: /Basmati Rice/ }).click();
@@ -206,6 +211,14 @@ test("local mocked smoke: login through purchase, inventory, and analytics", asy
   await expect(page.getByText("Purchase recorded")).toBeVisible();
   await page.getByRole("link", { name: "Inventory", exact: true }).click();
   await expect(page.getByText("Basmati Rice")).toBeVisible();
+  await page.getByRole("button", { name: "New adjustment" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Choose a product to adjust" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("dialog", { name: "Choose a product to adjust" }),
+  ).toBeHidden();
   await page.getByRole("button", { name: "New adjustment" }).click();
   await page.getByLabel("Product search").fill("rice");
   await page.getByRole("button", { name: /Basmati Rice/ }).click();

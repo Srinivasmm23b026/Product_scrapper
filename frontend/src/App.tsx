@@ -1,4 +1,11 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   useMutation,
   useQueries,
@@ -44,6 +51,8 @@ import {
   MapPin,
   Menu,
   PackageCheck,
+  PanelLeftClose,
+  PanelLeftOpen,
   ReceiptText,
   Search,
   Settings,
@@ -175,6 +184,8 @@ const navigation: { to: string; label: string; icon: LucideIcon }[] = [
 
 function Shell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const session = useQuery({
     queryKey: queryKeys.session,
     queryFn: api.session,
@@ -193,28 +204,47 @@ function Shell({ children }: { children: React.ReactNode }) {
   const pageTitle =
     navigation.find((item) => item.to === location.pathname)?.label ??
     "Procurement Assistant";
-  const sidebar = (
-    <aside className="flex h-full w-72 flex-col border-r border-white/10 bg-forest px-4 py-5 text-white shadow-2xl">
-      <Link to="/dashboard" className="mb-9 flex items-center gap-3 px-3">
+  const sidebar = (compact = false) => (
+    <aside
+      className={cn(
+        "flex h-full flex-col border-r border-white/10 bg-forest py-5 text-white shadow-2xl transition-[width,padding] duration-300",
+        compact ? "w-20 px-3" : "w-72 px-4",
+      )}
+    >
+      <Link
+        to="/dashboard"
+        className={cn(
+          "mb-9 flex items-center gap-3 px-3",
+          compact && "justify-center px-0",
+        )}
+        title={compact ? "Procurement Assistant" : undefined}
+      >
         <span className="grid h-10 w-10 place-items-center rounded-xl bg-lime-100 text-lg font-black text-forest">
           PA
         </span>
-        <span>
-          <strong className="block text-sm">Procurement</strong>
-          <span className="text-xs text-emerald-100/65">
-            Restaurant operations
+        {!compact && (
+          <span>
+            <strong className="block text-sm">Procurement</strong>
+            <span className="text-xs text-emerald-100/65">
+              Restaurant operations
+            </span>
           </span>
-        </span>
+        )}
       </Link>
       <nav className="space-y-1" aria-label="Primary navigation">
         {navigation.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              setOpen(false);
+              setAccountOpen(false);
+            }}
+            title={compact ? label : undefined}
             className={({ isActive }) =>
               cn(
                 "flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition",
+                compact && "justify-center px-0",
                 isActive
                   ? "bg-white/14 text-white shadow-inner"
                   : "text-emerald-50/70 hover:bg-white/8 hover:text-white",
@@ -222,21 +252,35 @@ function Shell({ children }: { children: React.ReactNode }) {
             }
           >
             <Icon size={18} />
-            {label}
+            {!compact && label}
           </NavLink>
         ))}
       </nav>
-      <div className="mt-auto rounded-2xl border border-white/10 bg-white/7 p-3">
+      <div
+        className={cn(
+          "mt-auto rounded-2xl border border-white/10 bg-white/7 p-3",
+          compact && "grid place-items-center p-2",
+        )}
+        title={
+          compact
+            ? `${session.data?.restaurant?.name ?? "Restaurant"} · ${session.data?.location?.label ?? "Beta location"}`
+            : undefined
+        }
+      >
         <div className="flex items-center gap-2 text-xs text-emerald-50/75">
           <MapPin size={14} />
-          {session.data?.location?.label ?? "Beta location"}
+          {!compact && (session.data?.location?.label ?? "Beta location")}
         </div>
-        <p className="mt-1 truncate text-sm font-semibold">
-          {session.data?.restaurant?.name}
-        </p>
-        <p className="mt-1 text-xs text-emerald-50/60">
-          {session.data?.location?.city} · {session.data?.location?.pincode}
-        </p>
+        {!compact && (
+          <>
+            <p className="mt-1 truncate text-sm font-semibold">
+              {session.data?.restaurant?.name}
+            </p>
+            <p className="mt-1 text-xs text-emerald-50/60">
+              {session.data?.location?.city} · {session.data?.location?.pincode}
+            </p>
+          </>
+        )}
       </div>
     </aside>
   );
@@ -266,15 +310,20 @@ function Shell({ children }: { children: React.ReactNode }) {
               className="h-full"
               onClick={(event) => event.stopPropagation()}
             >
-              {sidebar}
+              {sidebar()}
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-      <div className="hidden fixed inset-y-0 left-0 z-30 lg:block">
-        {sidebar}
+      <div className="fixed inset-y-0 left-0 z-30 hidden lg:block">
+        {sidebar(collapsed)}
       </div>
-      <main className="min-h-screen lg:pl-72">
+      <main
+        className={cn(
+          "min-h-screen transition-[padding] duration-300",
+          collapsed ? "lg:pl-20" : "lg:pl-72",
+        )}
+      >
         <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-slate-200/70 bg-canvas/90 px-5 backdrop-blur lg:px-10">
           <div className="flex items-center gap-3">
             <button
@@ -283,6 +332,20 @@ function Shell({ children }: { children: React.ReactNode }) {
               aria-label="Open navigation"
             >
               <Menu />
+            </button>
+            <button
+              className="hidden rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:block"
+              onClick={() => setCollapsed((value) => !value)}
+              aria-label={
+                collapsed ? "Expand navigation" : "Collapse navigation"
+              }
+              title={collapsed ? "Expand navigation" : "Collapse navigation"}
+            >
+              {collapsed ? (
+                <PanelLeftOpen size={20} />
+              ) : (
+                <PanelLeftClose size={20} />
+              )}
             </button>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.17em] text-moss">
@@ -302,8 +365,13 @@ function Shell({ children }: { children: React.ReactNode }) {
             >
               <Bell size={19} />
             </button>
-            <div className="group relative">
-              <button className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold shadow-sm">
+            <div className="relative">
+              <button
+                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold shadow-sm"
+                onClick={() => setAccountOpen((value) => !value)}
+                aria-expanded={accountOpen}
+                aria-haspopup="menu"
+              >
                 <span className="grid h-7 w-7 place-items-center rounded-lg bg-moss text-xs text-white">
                   {session.data?.email?.slice(0, 1).toUpperCase() || "U"}
                 </span>
@@ -312,15 +380,24 @@ function Shell({ children }: { children: React.ReactNode }) {
                 </span>
                 <ChevronDown size={14} />
               </button>
-              <div className="invisible absolute right-0 top-full z-30 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1 opacity-0 shadow-lift transition group-hover:visible group-hover:opacity-100">
-                <button
-                  onClick={() => logout.mutate()}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-700 hover:bg-rose-50"
+              {accountOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-30 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-lift"
                 >
-                  <LogOut size={15} />
-                  Log out
-                </button>
-              </div>
+                  <button
+                    onClick={() => {
+                      setAccountOpen(false);
+                      logout.mutate();
+                    }}
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-700 hover:bg-rose-50"
+                  >
+                    <LogOut size={15} />
+                    Log out
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
@@ -661,11 +738,13 @@ function OnboardingPage() {
 function Metric({
   label,
   value,
+  format = (amount) => Math.round(amount).toLocaleString("en-IN"),
   detail,
   icon: Icon,
 }: {
   label: string;
-  value: string;
+  value: number;
+  format?: (amount: number) => string;
   detail: string;
   icon: LucideIcon;
 }) {
@@ -675,7 +754,7 @@ function Metric({
         <div>
           <p className="text-sm font-medium text-slate-500">{label}</p>
           <strong className="mt-3 block text-3xl font-bold tracking-tight">
-            {value}
+            <AnimatedMetricValue value={value} format={format} />
           </strong>
         </div>
         <span className="rounded-xl bg-emerald-50 p-2.5 text-moss transition group-hover:-translate-y-0.5">
@@ -685,6 +764,40 @@ function Metric({
       <p className="mt-4 text-xs text-slate-500">{detail}</p>
     </motion.article>
   );
+}
+
+function AnimatedMetricValue({
+  value,
+  format,
+}: {
+  value: number;
+  format: (amount: number) => string;
+}) {
+  const reduced = useReducedMotion();
+  const [display, setDisplay] = useState(reduced ? value : 0);
+  const displayed = useRef(display);
+  useEffect(() => {
+    if (reduced) {
+      setDisplay(value);
+      displayed.current = value;
+      return;
+    }
+    const start = performance.now();
+    const initial = displayed.current;
+    const duration = 520;
+    let frame = 0;
+    const tick = (now: number) => {
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const next = initial + (value - initial) * eased;
+      displayed.current = next;
+      setDisplay(next);
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [reduced, value]);
+  return <>{format(display)}</>;
 }
 
 function DashboardPage() {
@@ -716,6 +829,19 @@ function DashboardPage() {
   const data = analytics.data!;
   const runRows = runs.data!.items;
   const supplierCoverage = new Set(runRows.map((run) => run.supplier)).size;
+  const latestRun = [...runRows]
+    .filter((run) => run.finished_at)
+    .sort((left, right) =>
+      String(right.finished_at).localeCompare(String(left.finished_at)),
+    )[0];
+  const freshnessHours = latestRun?.finished_at
+    ? Math.max(
+        0,
+        Math.round(
+          (Date.now() - new Date(latestRun.finished_at).getTime()) / 3_600_000,
+        ),
+      )
+    : 0;
   return (
     <div className="space-y-7">
       <section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
@@ -734,30 +860,42 @@ function DashboardPage() {
           Compare a product
         </Link>
       </section>
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <Metric
           label="Spend this month"
-          value={money(data.current_month_spend)}
+          value={data.current_month_spend}
+          format={money}
           detail="Recorded purchase value"
           icon={ReceiptText}
         />
         <Metric
           label="Purchases"
-          value={String(purchases.data!.items.length)}
+          value={purchases.data!.items.length}
           detail="Recent procurement records"
           icon={PackageCheck}
         />
         <Metric
           label="Inventory items"
-          value={String(inventory.data!.items.length)}
+          value={inventory.data!.items.length}
           detail="Tracked at this location"
           icon={Box}
         />
         <Metric
           label="Supplier coverage"
-          value={String(supplierCoverage)}
+          value={supplierCoverage}
           detail="Suppliers with scrape activity"
           icon={ShieldCheck}
+        />
+        <Metric
+          label="Price freshness"
+          value={freshnessHours}
+          format={() => (latestRun ? `${freshnessHours}h` : "—")}
+          detail={
+            latestRun
+              ? `${latestRun.supplier} last completed ${dateTime(latestRun.finished_at)}`
+              : "No completed supplier scrape yet"
+          }
+          icon={ClipboardList}
         />
       </section>
       <section className="grid gap-5 xl:grid-cols-[1.45fr_.85fr]">
@@ -1368,6 +1506,24 @@ function HistoryPanel({ data, loading }: { data?: History; loading: boolean }) {
     String(left.stamp).localeCompare(String(right.stamp)),
   );
   const colors = ["#2f6a4f", "#c56b2d", "#4968a8", "#8b5aa4", "#197a83"];
+  const latest = [...observations].sort((left, right) =>
+    right.observed_at.localeCompare(left.observed_at),
+  )[0];
+  const previous = latest
+    ? [...observations]
+        .filter(
+          (point) =>
+            point.supplier === latest.supplier &&
+            point.supplier_location === latest.supplier_location,
+        )
+        .sort((left, right) =>
+          right.observed_at.localeCompare(left.observed_at),
+        )[1]
+    : undefined;
+  const change =
+    latest?.price != null && previous?.price != null
+      ? latest.price - previous.price
+      : null;
   return (
     <section className="surface p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1419,6 +1575,15 @@ function HistoryPanel({ data, loading }: { data?: History; loading: boolean }) {
             </span>
           ))}
         </div>
+      )}
+      {latest && (
+        <p className="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          Latest observation: <strong>{latest.supplier}</strong> ·{" "}
+          {latest.supplier_location}
+          {change != null && previous
+            ? ` ${change === 0 ? "is unchanged" : `is ${change > 0 ? "up" : "down"} ${money(Math.abs(change))}`} since ${shortDate(previous.observed_at)}.`
+            : ` observed ${shortDate(latest.observed_at)}.`}
+        </p>
       )}
       {loading ? (
         <Skeleton className="mt-6 h-64" />
@@ -1610,6 +1775,39 @@ function Dialog({
   onClose: () => void;
 }) {
   const reduced = useReducedMotion();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const focusable = () =>
+      Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+    const first = focusable()[0];
+    first?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+      if (event.key !== "Tab") return;
+      const controls = focusable();
+      const firstControl = controls[0];
+      const lastControl = controls.at(-1);
+      if (!firstControl || !lastControl) return;
+      if (event.shiftKey && document.activeElement === firstControl) {
+        event.preventDefault();
+        lastControl.focus();
+      } else if (!event.shiftKey && document.activeElement === lastControl) {
+        event.preventDefault();
+        firstControl.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
   return (
     <AnimatePresence>
       <motion.div
@@ -1626,6 +1824,7 @@ function Dialog({
         <motion.div
           {...(reduced ? {} : motionProps)}
           className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl"
+          ref={dialogRef}
           onMouseDown={(event) => event.stopPropagation()}
           role="dialog"
           aria-modal="true"
@@ -2120,7 +2319,8 @@ function SpendingPage() {
       <section className="grid gap-5 lg:grid-cols-[.8fr_1.2fr]">
         <Metric
           label="Total spend this month"
-          value={money(data.current_month_spend)}
+          value={data.current_month_spend}
+          format={money}
           detail="From recorded procurement purchases"
           icon={TrendingUp}
         />

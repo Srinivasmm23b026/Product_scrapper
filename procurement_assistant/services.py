@@ -68,21 +68,41 @@ def search_products(session: Session, query: str, *, limit: int = 25) -> list[di
             .limit(limit * 3)
         )
     )
-    raw_matches = session.execute(
-        select(CanonicalProduct)
-        .join(ProductMatch, ProductMatch.canonical_product_id == CanonicalProduct.id)
-        .join(SupplierProduct, SupplierProduct.id == ProductMatch.supplier_product_id)
-        .where(SupplierProduct.source_name.ilike(pattern))
-        .limit(limit * 2)
-    ).scalars()
-    fuzzy_pool = session.scalars(
-        select(CanonicalProduct)
-        .where(CanonicalProduct.status != "deprecated")
-        .order_by(CanonicalProduct.id)
-        .limit(5000)
-    )
-    by_id = {item.id: item for item in [*candidates, *raw_matches, *fuzzy_pool]}
     normalized_query = normalize_product_name(query)
+    raw_matches = list(
+        session.execute(
+            select(CanonicalProduct)
+            .join(ProductMatch, ProductMatch.canonical_product_id == CanonicalProduct.id)
+            .join(SupplierProduct, SupplierProduct.id == ProductMatch.supplier_product_id)
+            .where(SupplierProduct.source_name.ilike(pattern))
+            .limit(limit * 2)
+        ).scalars()
+    )
+    direct_matches = [*candidates, *raw_matches]
+    # An exact/prefix/substring match is the common typeahead path.  Avoid
+    # scoring the entire catalog in that case: doing so makes a short product
+    # lookup CPU-bound on small hosted instances.  Keep a narrowly prefiltered
+    # fuzzy fallback for misspellings such as "basmti".
+    fuzzy_pool: list[CanonicalProduct] = []
+    if not direct_matches:
+        first_term = normalized_query.split(maxsplit=1)[0] if normalized_query else ""
+        fuzzy_stem = first_term[: max(3, len(first_term) // 2)]
+        if fuzzy_stem:
+            fuzzy_pattern = f"%{fuzzy_stem}%"
+            fuzzy_pool = list(
+                session.scalars(
+                    select(CanonicalProduct)
+                    .where(
+                        CanonicalProduct.status != "deprecated",
+                        or_(
+                            CanonicalProduct.normalized_name.ilike(fuzzy_pattern),
+                            CanonicalProduct.display_name.ilike(fuzzy_pattern),
+                        ),
+                    )
+                    .limit(limit * 12)
+                )
+            )
+    by_id = {item.id: item for item in [*direct_matches, *fuzzy_pool]}
 
     def score(product: CanonicalProduct):
         display = product.display_name.casefold()

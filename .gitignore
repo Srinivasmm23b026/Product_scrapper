@@ -31,5 +31,10 @@ data/*.sqlite3
 # Build output
 build/
 dist/
+node_modules/
+.vite/
+*.tsbuildinfo
+procurement_assistant/static/app/
+frontend/test-results/
+frontend/playwright-report/
 *.egg-info/
-

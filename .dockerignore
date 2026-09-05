@@ -1,8 +1,7 @@
 .git
 .venv
-.pytest_cache
-.ruff_cache
 __pycache__
+*.pyc
 *.py[cod]
 *.db
 *.log
@@ -11,3 +10,10 @@ data/
 logs/
 tests/
 docs/
+node_modules
+frontend/node_modules
+procurement_assistant/static/app
+.pytest_cache
+.ruff_cache
+playwright-report
+test-results

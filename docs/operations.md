@@ -18,8 +18,10 @@ operator must check their enabled state. A non-complete run exits non-zero and m
 red. BigBasket and Deliverit remain disabled because live validation found access/DNS failures;
 silently scheduling known-broken adapters would create noise rather than freshness.
 
-Configured Hyperpure accounts require an OTP. Because human SMS OTPs are not unattended, the beta
-workflow uses only anonymous Hyperpure data unless a permitted unattended session mechanism exists.
+Hyperpure uses the encrypted reusable HTTP session documented in
+`docs/scrapers/hyperpure-authentication.md`. The scheduled adapter never uses anonymous data. It
+persists server-returned replacement authorization in private Supabase Storage and requests local
+OTP bootstrap only when the stored state is missing, corrupt, or rejected.
 
 Lots scheduled scraping uses only `Lots fallback store 101 (unverified)` until a store-locator or
 authenticated session establishes a real store. Its fallback prices are supplier-default prices, not
@@ -34,7 +36,8 @@ and emits a structured JSON event. Storage is selected by `OBJECT_STORAGE_PROVID
 - `s3` for the future AWS workload.
 
 A count below `EXPECTED_MIN` is `partial`; zero is `suspicious_zero`. Only `complete` runs advance
-missing-offer counters. Three complete misses retire an offer. Failed and partial runs never do.
+missing-offer counters. Three complete misses retire an offer. Failed, partial, and
+`reauthentication_required` runs never do.
 
 ## Visibility and alerts
 

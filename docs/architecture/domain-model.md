@@ -46,8 +46,9 @@ Restaurant ──< Purchase ──< PurchaseItem >── ProductVariant / Suppli
 - Offers are unique by supplier product/supplier location. The normalized variant may be null for
   legacy or newly observed products whose pack is not yet safely parseable.
 - Observations cannot reference a nonexistent offer and are immutable through the application ORM.
-- Run status is one of `running`, `complete`, `partial`, `failed`, `suspicious_zero`, or
-  `interrupted`.
+- Run status is one of `running`, `complete`, `partial`, `failed`, `suspicious_zero`,
+  `interrupted`, or `reauthentication_required`. The last state preserves prior offer freshness
+  when a supplier session needs operator renewal.
 - Only one generated procurement expense may reference a purchase.
 - Inventory balances are unique per restaurant/location/canonical product/base unit.
 - Cross-tenant access is an application authorization responsibility and must always be derived

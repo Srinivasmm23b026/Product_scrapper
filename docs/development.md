@@ -54,7 +54,8 @@ and performs live writes; do not use it as a smoke test. See the migration guide
 | `OBJECT_STORAGE_BUCKET`, `LOCAL_STORAGE_PATH` | Snapshot target settings |
 | `METRICS_PROVIDER` | `logs` for beta or `cloudwatch` for AWS |
 | `SUPPLIER`, `SUPPLIER_LOCATION_ID`, `EXPECTED_MIN` | Non-interactive worker contract |
-| `HYPERPURE_OTP` | Explicit account OTP; unsuitable for unattended schedules |
+| `HYPERPURE_SESSION_STORAGE_PROVIDER`, `HYPERPURE_SESSION_BUCKET` | Server-only mutable Hyperpure session storage |
+| `HYPERPURE_SESSION_ENCRYPTION_KEY` | Separate Fernet key used to encrypt the mutable Hyperpure session object |
 | `COGNITO_*`, `AWS_REGION`, `RAW_SNAPSHOT_BUCKET`, `CLOUDWATCH_NAMESPACE` | Retained AWS target |
 
 Never commit database passwords, provider keys, OTPs, JWTs, cookies, or `.env` files.

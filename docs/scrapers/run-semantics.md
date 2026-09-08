@@ -14,6 +14,7 @@ warnings, and a positive completeness signal.
 | Some observations but failed pages, no completeness signal, or count mismatch | `partial` |
 | Nonzero observations, completeness signal, no failed pages, expected count matches | `complete` |
 | Previously running record exceeds the recovery threshold | `interrupted` |
+| Supplier rejects or cannot restore stored authentication | `reauthentication_required` |
 
 A successful HTTP status is not a completeness signal.
 
@@ -32,8 +33,7 @@ A successful HTTP status is not a completeness signal.
 
 Seen offers reset `consecutive_misses` in complete and partial runs. Missing offers advance their
 counter only after a trustworthy `complete` run for that supplier location. Failed, partial,
-suspicious-zero, and interrupted runs cannot retire an offer.
+suspicious-zero, interrupted, and reauthentication-required runs cannot retire an offer.
 
 The current V1 default retires an offer after three complete-run misses. Retirement means
 `active=false` and current availability false; historical observations are never modified.
-

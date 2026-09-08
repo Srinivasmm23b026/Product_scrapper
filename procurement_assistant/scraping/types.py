@@ -30,6 +30,15 @@ class ScrapeResult:
 ScrapeAdapter = Callable[[], ScrapeResult]
 
 
+class ScrapeAuthenticationRequired(RuntimeError):
+    """The supplier requires an operator to renew authentication.
+
+    Adapters raise this instead of returning an empty catalogue. The run
+    service records the operational state without changing offers or their
+    freshness.
+    """
+
+
 def classify_result(result: ScrapeResult) -> str:
     observed = len(result.observations)
     if observed == 0:
@@ -39,4 +48,3 @@ def classify_result(result: ScrapeResult) -> str:
     if result.expected_count is not None and observed != result.expected_count:
         return "partial"
     return "complete"
-

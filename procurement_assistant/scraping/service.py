@@ -7,7 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from procurement_assistant.models import PriceObservation, ScrapeRun, SupplierOffer
-from procurement_assistant.scraping.types import ScrapeAdapter, ScrapeResult, classify_result
+from procurement_assistant.scraping.types import (
+    ScrapeAdapter,
+    ScrapeAuthenticationRequired,
+    ScrapeResult,
+    classify_result,
+)
 
 
 class ScrapePersistenceError(RuntimeError):
@@ -31,6 +36,9 @@ class ScrapeRunService:
         run_id = self._start_run(supplier_id, supplier_location_id)
         try:
             result = adapter()
+        except ScrapeAuthenticationRequired as exc:
+            self._finish_reauthentication_required(run_id, str(exc))
+            return run_id
         except Exception as exc:
             self._finish_failed(run_id, f"adapter failure: {type(exc).__name__}: {exc}")
             return run_id
@@ -147,3 +155,12 @@ class ScrapeRunService:
             run.finished_at = datetime.now(UTC)
             run.error_summary = summary[:4000]
 
+    def _finish_reauthentication_required(self, run_id: uuid.UUID, summary: str) -> None:
+        with self.session_factory.begin() as session:
+            run = session.get(ScrapeRun, run_id)
+            if run is None:
+                raise LookupError(f"scrape run {run_id} does not exist")
+            run.status = "reauthentication_required"
+            run.finished_at = datetime.now(UTC)
+            run.error_summary = summary[:4000]
+            run.run_metadata = {"authentication_status": "reauthentication-required"}

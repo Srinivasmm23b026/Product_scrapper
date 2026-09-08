@@ -269,7 +269,7 @@ class ScrapeRun(UUIDPrimaryKeyMixin, Base):
     __table_args__ = (
         CheckConstraint(
             "status IN ('running', 'complete', 'partial', 'failed', 'suspicious_zero', "
-            "'interrupted')",
+            "'interrupted', 'reauthentication_required')",
             name="valid_status",
         ),
         CheckConstraint("observed_count >= 0", name="nonnegative_observed_count"),

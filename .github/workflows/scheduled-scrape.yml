@@ -40,6 +40,9 @@ jobs:
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       SUPPLIER_LOCATION_ID: ${{ secrets[matrix.location_secret] }}
       METRICS_PROVIDER: logs
+      HYPERPURE_SESSION_STORAGE_PROVIDER: supabase
+      HYPERPURE_SESSION_BUCKET: raw-scrapes
+      HYPERPURE_SESSION_ENCRYPTION_KEY: ${{ matrix.supplier == 'hyperpure' && secrets.HYPERPURE_SESSION_ENCRYPTION_KEY || '' }}
     steps:
       - name: Skip Hyperpure without a verified location
         if: ${{ matrix.optional_location && env.SUPPLIER_LOCATION_ID == '' }}
@@ -55,8 +58,15 @@ jobs:
         if: ${{ !(matrix.optional_location && env.SUPPLIER_LOCATION_ID == '') }}
         run: python -m pip install --requirement requirements.txt
       - name: Run supplier worker
+        id: scrape
         if: ${{ !(matrix.optional_location && env.SUPPLIER_LOCATION_ID == '') }}
         env:
           SUPPLIER: ${{ matrix.supplier }}
           EXPECTED_MIN: ${{ matrix.expected_min }}
         run: python -m procurement_assistant.cloud_worker
+      - name: Explain Hyperpure authentication states
+        if: ${{ matrix.supplier == 'hyperpure' && always() && env.SUPPLIER_LOCATION_ID != '' }}
+        run: |
+          echo '### Hyperpure authentication' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Status: `${{ steps.scrape.outputs.authentication_status || 'failed' }}`' >> "$GITHUB_STEP_SUMMARY"
+          echo 'A reauthentication-required run exits gracefully and preserves prior offer freshness.' >> "$GITHUB_STEP_SUMMARY"

@@ -8,6 +8,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -32,11 +33,18 @@ from scrapers import bigbasket, deliverit, hyperpure, lots
 
 LOGGER = logging.getLogger("procurement-worker")
 SCRAPERS = {
-    "hyperpure": hyperpure.scrape,
+    "hyperpure": hyperpure.scrape_authenticated,
     "bigbasket": bigbasket.scrape,
     "deliverit": deliverit.scrape,
     "lots": lots.scrape,
 }
+
+
+def _write_workflow_authentication_status(status: str) -> None:
+    output_path = os.environ.get("GITHUB_OUTPUT")
+    if output_path:
+        with Path(output_path).open("a", encoding="utf-8") as output:
+            output.write(f"authentication_status={status}\n")
 
 
 def _decimal(value) -> Decimal | None:
@@ -70,7 +78,11 @@ def _verified_hyperpure_location(products: list[dict], location: SupplierLocatio
     if len(identities) != 1:
         raise ValueError("authenticated Hyperpure scrape returned multiple outlet identities")
     evidence = json.loads(identities.pop())
-    if not evidence.get("verified") or evidence.get("verification_method") != "authenticated_hyperpure_outlet_api":
+    if (
+        not evidence.get("verified")
+        or evidence.get("verification_method")
+        != "authenticated_hyperpure_outlet_catalogue_api"
+    ):
         raise ValueError("Hyperpure outlet evidence is not authenticated verification")
     if evidence.get("external_location_id") != location.external_location_id:
         raise ValueError("authenticated Hyperpure outlet does not match configured supplier location")
@@ -180,9 +192,6 @@ def build_adapter(
     storage = storage or configure_storage(settings)
 
     def adapter() -> ScrapeResult:
-        if source == "hyperpure" and getattr(__import__("config"), "HYPERPURE_ACCOUNTS", []):
-            if not os.environ.get("HYPERPURE_OTP"):
-                raise RuntimeError("non-interactive Hyperpure run requires HYPERPURE_OTP")
         products = SCRAPERS[source]()
         authenticated_location = (
             _verified_hyperpure_location(products, location) if source == "hyperpure" else None
@@ -225,6 +234,11 @@ def build_adapter(
             metadata={
                 "raw_snapshot": raw_reference,
                 "source_rows": len(products),
+                **(
+                    {"authentication_status": products[0].get("authentication_status")}
+                    if source == "hyperpure" and products
+                    else {}
+                ),
                 **(
                     {"authenticated_location": authenticated_location}
                     if authenticated_location
@@ -273,6 +287,20 @@ def run(source: str, supplier_location_id: uuid.UUID, expected_min: int) -> int:
         configure_metrics(settings).record_scrape_run(
             source, scrape_run, time.monotonic() - started
         )
+        if source == "hyperpure":
+            authentication_status = (
+                scrape_run.run_metadata.get("authentication_status")
+                or ("reauthentication-required" if scrape_run.status == "reauthentication_required" else "failed")
+            )
+            _write_workflow_authentication_status(str(authentication_status))
+        if scrape_run.status == "reauthentication_required":
+            log_event(
+                "hyperpure_authentication_status",
+                supplier=source,
+                status="reauthentication-required",
+                action="run python -m procurement_assistant.hyperpure_auth_bootstrap",
+            )
+            return 0
         return 0 if scrape_run.status == "complete" else 1
 
 
@@ -298,6 +326,8 @@ def main() -> int:
     try:
         return run(args.supplier, args.supplier_location_id, args.expected_min)
     except Exception as exc:
+        if args.supplier == "hyperpure":
+            _write_workflow_authentication_status("failed")
         log_event(
             "scrape_worker_crashed",
             supplier=args.supplier,

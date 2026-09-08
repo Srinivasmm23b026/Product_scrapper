@@ -32,7 +32,7 @@ def test_authenticated_hyperpure_evidence_must_match_a_verified_supplier_locatio
         "authenticated_location": {
             "external_location_id": "outlet:42",
             "verified": True,
-            "verification_method": "authenticated_hyperpure_outlet_api",
+            "verification_method": "authenticated_hyperpure_outlet_catalogue_api",
         }
     }
 

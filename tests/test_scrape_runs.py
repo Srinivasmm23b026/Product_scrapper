@@ -19,7 +19,11 @@ from procurement_assistant.models import (
     SupplierProduct,
 )
 from procurement_assistant.scraping.service import ScrapePersistenceError, ScrapeRunService
-from procurement_assistant.scraping.types import OfferObservationInput, ScrapeResult
+from procurement_assistant.scraping.types import (
+    OfferObservationInput,
+    ScrapeAuthenticationRequired,
+    ScrapeResult,
+)
 
 
 @pytest.fixture
@@ -180,6 +184,26 @@ def test_adapter_failure_records_failed_run_without_observations(scrape_context)
         run = session.get(ScrapeRun, run_id)
         assert run.status == "failed"
         assert "network unavailable" in run.error_summary
+        assert session.scalar(select(PriceObservation)) is None
+
+
+def test_reauthentication_required_preserves_existing_offer_freshness(scrape_context) -> None:
+    factory, supplier_id, location_id, offer_id = scrape_context
+    service = ScrapeRunService(factory, retire_after_misses=1)
+
+    def needs_login():
+        raise ScrapeAuthenticationRequired("supplier session requires operator renewal")
+
+    run_id = service.execute(
+        supplier_id=supplier_id, supplier_location_id=location_id, adapter=needs_login
+    )
+    with factory() as session:
+        run = session.get(ScrapeRun, run_id)
+        offer = session.get(SupplierOffer, offer_id)
+        assert run.status == "reauthentication_required"
+        assert run.run_metadata == {"authentication_status": "reauthentication-required"}
+        assert offer.active is True
+        assert offer.consecutive_misses == 0
         assert session.scalar(select(PriceObservation)) is None
 
 

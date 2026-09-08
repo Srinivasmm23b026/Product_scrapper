@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     local_storage_path: Path = Path("/tmp/procurement-raw")
     raw_snapshot_bucket: str | None = None
     raw_snapshot_prefix: str = "raw-scrapes"
+    hyperpure_session_storage_provider: Literal["local", "supabase"] = "local"
+    hyperpure_session_file: Path = Path("~/.config/procurement-assistant/hyperpure-session.enc")
+    hyperpure_session_bucket: str = "raw-scrapes"
+    hyperpure_session_object_key: str = "private-auth/hyperpure/session.enc.json"
+    hyperpure_session_encryption_key: str | None = None
     metrics_provider: Literal["logs", "cloudwatch"] = "logs"
     cloudwatch_namespace: str | None = None
 

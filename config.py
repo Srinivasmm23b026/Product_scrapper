@@ -154,29 +154,18 @@ LOTS_DEFAULT_STORE_CODE = "101"
 # from the current public Hyperpure web bundle (observed 2026-09-05).  The
 # authentication response carries an Authorization header; the authenticated
 # user/outlet APIs reveal the real outlet id, address, and pincode.
-HYPERPURE_VERIFY_USER_API = "https://www.hyperpure.com/api/verifyUser?phoneNumber={phone}"
+HYPERPURE_API_ORIGIN = "https://api.hyperpure.com"
+HYPERPURE_VERIFY_USER_API = f"{HYPERPURE_API_ORIGIN}/api/verifyUser?phoneNumber={{phone}}"
 HYPERPURE_SEND_OTP_API = (
-    "https://www.hyperpure.com/api/user/otpsms?isForgotPassword=true"
+    f"{HYPERPURE_API_ORIGIN}/api/user/otpsms?isForgotPassword=true"
     "&userPhoneNumber={phone}&source=sign_in"
 )
-HYPERPURE_SIGN_IN_API = "https://www.hyperpure.com/api/registration/signin"
-HYPERPURE_USER_DATA_API = "https://www.hyperpure.com/consumer/signInUser/v2"
-HYPERPURE_OUTLETS_API = "https://www.hyperpure.com/consumer/outlets"
-HYPERPURE_SWITCH_OUTLET_API = "https://www.hyperpure.com/consumer/switchOutlet"
-
-# One entry per business account/region you hold real credentials for.
-# Left empty by default: with no accounts configured, hyperpure.scrape()
-# falls back to today's existing anonymous public-listing behavior instead
-# of failing the whole run.
-HYPERPURE_ACCOUNTS = [
-    # {
-    #     "label": "approved-business-account",
-    #     "phone": "9100000000",
-    #     # Required where the account has multiple outlets. This is Hyperpure's
-    #     # own authenticated outlet id, never a locally invented pincode.
-    #     "outlet_id": "12345",
-    # },
-]
+HYPERPURE_SIGN_IN_API = f"{HYPERPURE_API_ORIGIN}/api/registration/signin"
+HYPERPURE_USER_DATA_API = f"{HYPERPURE_API_ORIGIN}/consumer/signInUser/v2?fetchThroughV2=true"
+HYPERPURE_OUTLETS_API = f"{HYPERPURE_API_ORIGIN}/consumer/outlets"
+HYPERPURE_SWITCH_OUTLET_API = f"{HYPERPURE_API_ORIGIN}/consumer/switchOutlet"
+HYPERPURE_SEARCH_API = f"{HYPERPURE_API_ORIGIN}/consumer/v2/search"
+HYPERPURE_MAX_PAGES = 200
 
 LOCATION_CONTEXT = {
     "hyperpure": {
@@ -187,8 +176,8 @@ LOCATION_CONTEXT = {
             "repeated fetches with no cookies. Hyperpure is a B2B platform "
             "where real pricing is per-buyer-contract after login; this is "
             "the public anonymous listing price only, not a specific pincode. "
-            "Configure HYPERPURE_ACCOUNTS above to scrape real per-account "
-            "pricing via login instead."
+            "This public response is retained only for explicit discovery; "
+            "all scraper entry points require an encrypted authenticated session."
         ),
     },
     "deliverit": {

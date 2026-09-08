@@ -11,6 +11,7 @@ dependencies = [
     "alembic>=1.16,<2",
     "beautifulsoup4>=4.12,<5",
     "boto3>=1.43,<2",
+    "cryptography>=45,<51",
     "fastapi>=0.141,<1",
     "jinja2>=3.1,<4",
     "lxml>=5.2,<7",

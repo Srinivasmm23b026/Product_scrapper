@@ -10,20 +10,13 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import select
-
+from procurement_assistant.catalog_ingestion import catalog_offers
 from procurement_assistant.database import build_engine, build_session_factory
 from procurement_assistant.models import (
-    CanonicalProduct,
-    ProductMatch,
-    ProductVariant,
     ScrapeRun,
     Supplier,
     SupplierLocation,
-    SupplierOffer,
-    SupplierProduct,
 )
-from procurement_assistant.normalization import normalize_product_name, parse_pack
 from procurement_assistant.providers.observability import configure_metrics, log_event
 from procurement_assistant.providers.storage import ObjectStorage, configure_storage
 from procurement_assistant.scraping.service import ScrapeRunService
@@ -91,95 +84,6 @@ def _verified_hyperpure_location(products: list[dict], location: SupplierLocatio
     return evidence
 
 
-def _catalog_offer(session, supplier, location, row: dict) -> SupplierOffer:
-    external_id = str(row.get("external_id") or "").strip()
-    if not external_id:
-        raise ValueError("scraper returned a product without external_id")
-    product = session.scalar(
-        select(SupplierProduct).where(
-            SupplierProduct.supplier_id == supplier.id,
-            SupplierProduct.external_product_id == external_id,
-            SupplierProduct.external_variant_id == "",
-        )
-    )
-    if product is None:
-        product = SupplierProduct(
-            supplier_id=supplier.id,
-            external_product_id=external_id,
-            external_variant_id="",
-            source_name=row.get("name") or f"{supplier.name} product {external_id}",
-            source_brand=row.get("brand"),
-            source_category=row.get("category"),
-            source_pack_text=row.get("unit"),
-            product_url=row.get("product_url"),
-            image_url=row.get("image_url"),
-            product_metadata={"location_note": row.get("location_note")},
-        )
-        session.add(product)
-        session.flush()
-        canonical = CanonicalProduct(
-            normalized_name=normalize_product_name(product.source_name, product.source_brand),
-            display_name=product.source_name,
-            canonical_brand=product.source_brand,
-            category=product.source_category,
-            status="review",
-            aliases=[],
-        )
-        session.add(canonical)
-        session.flush()
-        parsed = parse_pack(product.source_pack_text, product.source_name)
-        variant = None
-        if parsed:
-            variant = ProductVariant(
-                canonical_product_id=canonical.id,
-                quantity=parsed.quantity,
-                base_unit=parsed.base_unit,
-                pack_count=parsed.pack_count,
-                total_quantity=parsed.total_quantity,
-                normalized_pack_text=parsed.normalized_text,
-                attributes={"created_by": "cloud_worker"},
-            )
-            session.add(variant)
-            session.flush()
-        session.add(
-            ProductMatch(
-                supplier_product_id=product.id,
-                canonical_product_id=canonical.id,
-                product_variant_id=variant.id if variant else None,
-                match_method="new_source_product_v1",
-                confidence=Decimal("0"),
-                review_status="REVIEW",
-            )
-        )
-    else:
-        product.source_name = row.get("name") or product.source_name
-        product.source_brand = row.get("brand")
-        product.source_category = row.get("category")
-        product.source_pack_text = row.get("unit")
-        product.product_url = row.get("product_url")
-        product.image_url = row.get("image_url")
-    match = session.scalar(
-        select(ProductMatch).where(ProductMatch.supplier_product_id == product.id)
-    )
-    offer = session.scalar(
-        select(SupplierOffer).where(
-            SupplierOffer.supplier_product_id == product.id,
-            SupplierOffer.supplier_location_id == location.id,
-        )
-    )
-    if offer is None:
-        offer = SupplierOffer(
-            supplier_product_id=product.id,
-            product_variant_id=match.product_variant_id if match else None,
-            supplier_location_id=location.id,
-            active=True,
-            consecutive_misses=0,
-        )
-        session.add(offer)
-        session.flush()
-    return offer
-
-
 def build_adapter(
     settings,
     factory,
@@ -199,30 +103,53 @@ def build_adapter(
         raw_reference = _snapshot(settings, storage, source, products)
         observed_at = datetime.now(UTC)
         observations = []
-        observed_offer_ids = set()
         warnings = []
         with factory.begin() as session:
             db_supplier = session.get(Supplier, supplier.id)
             db_location = session.get(SupplierLocation, location.id)
+            valid_rows = []
+            identities = set()
             for row in products:
+                identity = (
+                    str(row.get("external_id") or ""),
+                    str(row.get("external_variant_id") or ""),
+                )
+                if not identity[0]:
+                    warnings.append("product without external ID excluded")
+                    continue
+                if identity in identities:
+                    warnings.append(
+                        f"{row.get('external_id', 'unknown')}: duplicate supplier offer skipped"
+                    )
+                    continue
                 try:
-                    offer = _catalog_offer(session, db_supplier, db_location, row)
-                    if offer.id in observed_offer_ids:
-                        warnings.append(
-                            f"{row.get('external_id', 'unknown')}: duplicate supplier offer skipped"
-                        )
-                        continue
+                    for key in ("price", "mrp"):
+                        value = _decimal(row.get(key))
+                        if value is not None and (not value.is_finite() or value < 0):
+                            raise ValueError("invalid price")
+                except (ValueError, ArithmeticError):
+                    warnings.append(f"{row.get('external_id', 'unknown')}: invalid price")
+                    continue
+                identities.add(identity)
+                valid_rows.append(row)
+            for row, offer in catalog_offers(
+                session, db_supplier, db_location, valid_rows
+            ):
+                try:
                     observations.append(
                         OfferObservationInput(
                             supplier_offer_id=offer.id,
                             price=_decimal(row.get("price")),
                             mrp=_decimal(row.get("mrp")),
-                            availability=bool(row.get("in_stock")),
+                            availability=(
+                                None
+                                if row.get("in_stock") is None
+                                else bool(row.get("in_stock"))
+                            ),
                             observed_at=observed_at,
                             raw_reference=raw_reference,
                         )
                     )
-                    observed_offer_ids.add(offer.id)
                 except (TypeError, ValueError) as exc:
                     warnings.append(f"{row.get('external_id', 'unknown')}: {exc}")
         expected = expected_min if len(observations) < expected_min else len(observations)

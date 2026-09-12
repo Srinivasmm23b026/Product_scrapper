@@ -88,17 +88,25 @@ class ScrapeRunService:
             if run is None:
                 raise LookupError(f"scrape run {run_id} does not exist")
 
+            observation_offer_ids = {item.supplier_offer_id for item in result.observations}
+            offers = {
+                offer.id: offer
+                for offer in session.scalars(
+                    select(SupplierOffer).where(SupplierOffer.id.in_(observation_offer_ids))
+                )
+            }
             seen_offer_ids: set[uuid.UUID] = set()
             for item in result.observations:
                 if item.supplier_offer_id in seen_offer_ids:
                     raise ValueError(f"duplicate offer observation: {item.supplier_offer_id}")
-                offer = session.get(SupplierOffer, item.supplier_offer_id)
+                offer = offers.get(item.supplier_offer_id)
                 if offer is None:
                     raise LookupError(f"supplier offer {item.supplier_offer_id} does not exist")
                 if offer.supplier_location_id != supplier_location_id:
                     raise ValueError("observation offer belongs to a different supplier location")
 
                 observation = PriceObservation(
+                    id=uuid.uuid4(),
                     supplier_offer_id=offer.id,
                     scrape_run_id=run.id,
                     price=item.price,
@@ -108,7 +116,6 @@ class ScrapeRunService:
                     raw_reference=item.raw_reference,
                 )
                 session.add(observation)
-                session.flush()
                 offer.current_price = item.price
                 offer.current_mrp = item.mrp
                 offer.current_availability = item.availability

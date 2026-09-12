@@ -93,7 +93,7 @@ LOTS_CATEGORY_SLUGS = [
     "hair-body-care/soaps-body-wash",
 ]
 LOTS_PAGE_SIZE = 60
-LOTS_MAX_PAGES_PER_CATEGORY = 3  # cap per category per run
+LOTS_MAX_PAGES_PER_CATEGORY = 30  # safety ceiling; API totals determine completion
 
 # ---------------------------------------------------------------------------
 # Location context. Every price on every one of these sites is location-

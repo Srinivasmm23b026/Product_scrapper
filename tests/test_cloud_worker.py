@@ -127,3 +127,61 @@ def test_cloud_adapter_persists_catalog_snapshot_and_partial_signal(tmp_path, mo
         assert observation.observed_at is not None
         assert observation.raw_reference
         assert list(tmp_path.rglob("*.json"))
+
+
+def test_cloud_worker_batches_large_catalog_and_observations(tmp_path, monkeypatch):
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory.begin() as session:
+        supplier = Supplier(code="lots", name="Lots", base_url="https://lots.example")
+        session.add(supplier)
+        session.flush()
+        location = SupplierLocation(
+            supplier_id=supplier.id,
+            external_location_id="store-101",
+            location_type="store",
+            name="Store 101",
+        )
+        session.add(location)
+        session.flush()
+        supplier_id, location_id = supplier.id, location.id
+
+    products = [
+        {
+            "source": "lots",
+            "external_id": f"rice-{number}",
+            "name": f"Test Rice {number}",
+            "price": 100,
+            "mrp": 110,
+            "unit": "1 kg",
+            "in_stock": True,
+        }
+        for number in range(500)
+    ]
+    monkeypatch.setitem(cloud_worker.SCRAPERS, "lots", lambda: products)
+    settings = Settings(database_url="sqlite://", local_storage_path=tmp_path)
+    with factory() as session:
+        supplier = session.get(Supplier, supplier_id)
+        location = session.get(SupplierLocation, location_id)
+    adapter = build_adapter(settings, factory, "lots", supplier, location, expected_min=500)
+    statements = []
+
+    def count_statement(_connection, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement.split()[0])
+
+    event.listen(engine, "before_cursor_execute", count_statement)
+    try:
+        run_id = ScrapeRunService(factory).execute(
+            supplier_id=supplier_id,
+            supplier_location_id=location_id,
+            adapter=adapter,
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", count_statement)
+
+    with factory() as session:
+        run = session.get(ScrapeRun, run_id)
+        assert run.status == "complete"
+        assert run.observed_count == 500
+    assert len(statements) < 50, statements

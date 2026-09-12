@@ -17,7 +17,7 @@ jobs:
   scrape:
     name: ${{ matrix.supplier }}
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -29,7 +29,9 @@ jobs:
             optional_location: true
           - supplier: lots
             location_secret: LOTS_SUPPLIER_LOCATION_ID
-            expected_min: 3000
+            # A complete live crawl returned 2,949 unique products. This
+            # threshold detects a catalogue loss greater than five percent.
+            expected_min: 2800
             optional_location: false
     env:
       DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
@@ -54,19 +56,23 @@ jobs:
         with:
           python-version: '3.13'
           cache: pip
-      - name: Install runtime dependencies
+      - name: Install locked runtime dependencies
         if: ${{ !(matrix.optional_location && env.SUPPLIER_LOCATION_ID == '') }}
-        run: python -m pip install --requirement requirements.txt
+        run: python -m pip install --requirement requirements.txt --constraint requirements.lock
       - name: Run supplier worker
         id: scrape
         if: ${{ !(matrix.optional_location && env.SUPPLIER_LOCATION_ID == '') }}
         env:
           SUPPLIER: ${{ matrix.supplier }}
           EXPECTED_MIN: ${{ matrix.expected_min }}
-        run: python -m procurement_assistant.cloud_worker
+        run: timeout --signal=TERM --kill-after=30s 25m python -m procurement_assistant.cloud_worker
       - name: Explain Hyperpure authentication states
         if: ${{ matrix.supplier == 'hyperpure' && always() && env.SUPPLIER_LOCATION_ID != '' }}
+        env:
+          AUTHENTICATION_STATUS: ${{ steps.scrape.outputs.authentication_status || 'failed' }}
         run: |
-          echo '### Hyperpure authentication' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Status: `${{ steps.scrape.outputs.authentication_status || 'failed' }}`' >> "$GITHUB_STEP_SUMMARY"
-          echo 'A reauthentication-required run exits gracefully and preserves prior offer freshness.' >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo '### Hyperpure authentication'
+            echo "Status: \`$AUTHENTICATION_STATUS\`"
+            echo 'A reauthentication-required run exits gracefully and preserves prior offer freshness.'
+          } >> "$GITHUB_STEP_SUMMARY"
